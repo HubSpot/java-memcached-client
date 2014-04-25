@@ -113,6 +113,12 @@ public interface MemcachedNode {
 	SocketAddress getSocketAddress();
 
 	/**
+	 * Used to force dns resolution before reconnecting. For those of us in the
+	 * cloud w/o control over IP's.
+	 */
+	void forceDnsResolution();
+
+	/**
 	 * True if this node is <q>active.</q>  i.e. is is currently connected
 	 * and expected to be able to process requests
 	 */

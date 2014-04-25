@@ -86,6 +86,10 @@ class MemcachedNodeROImpl implements MemcachedNode {
 		return root.getSocketAddress();
 	}
 
+	public void forceDnsResolution() {
+		throw new UnsupportedOperationException();
+	}
+
 	public ByteBuffer getWbuf() {
 		throw new UnsupportedOperationException();
 	}
