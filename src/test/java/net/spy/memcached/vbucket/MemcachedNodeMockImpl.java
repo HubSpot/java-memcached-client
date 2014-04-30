@@ -77,6 +77,9 @@ public class MemcachedNodeMockImpl implements MemcachedNode {
         return socketAddress;
     }
 
+    public void forceDnsResolution() {
+    }
+
     public ByteBuffer getWbuf() {
         return null;
     }
