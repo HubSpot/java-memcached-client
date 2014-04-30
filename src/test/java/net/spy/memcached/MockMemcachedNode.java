@@ -16,6 +16,7 @@ import net.spy.memcached.ops.Operation;
 public class MockMemcachedNode implements MemcachedNode {
 	private final InetSocketAddress socketAddress;
 	public SocketAddress getSocketAddress() {return socketAddress;}
+	public void forceDnsResolution() {;}
 
 	public MockMemcachedNode(InetSocketAddress socketAddress) {
 		this.socketAddress = socketAddress;

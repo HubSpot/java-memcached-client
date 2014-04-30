@@ -630,6 +630,7 @@ public final class MemcachedConnection extends SpyObject implements Reconfigurab
 			try {
 				if(!seen.containsKey(qa)) {
 					seen.put(qa, Boolean.TRUE);
+					qa.forceDnsResolution();
 					getLogger().info("Reconnecting %s", qa);
 					ch=SocketChannel.open();
 					ch.configureBlocking(false);

@@ -1,6 +1,7 @@
 package net.spy.memcached.protocol;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -25,7 +26,7 @@ import net.spy.memcached.protocol.binary.TapAckOperationImpl;
 public abstract class TCPMemcachedNodeImpl extends SpyObject
 	implements MemcachedNode {
 
-	private final SocketAddress socketAddress;
+	private volatile SocketAddress socketAddress;
 	private final ByteBuffer rbuf;
 	private final ByteBuffer wbuf;
 	protected final BlockingQueue<Operation> writeQ;
@@ -59,7 +60,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 		assert rq != null : "No operation read queue";
 		assert wq != null : "No operation write queue";
 		assert iq != null : "No input queue";
-		socketAddress=sa;
+		setSocketAddress(sa);
 		setChannel(c);
 		// Since these buffers are allocated rarely (only on client creation
 		// or reconfigure), and are passed to Channel.read() and Channel.write(),
@@ -362,6 +363,22 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	 */
 	public final SocketAddress getSocketAddress() {
 		return socketAddress;
+	}
+
+	private void setSocketAddress(SocketAddress sa) {
+		socketAddress = sa;
+	}
+
+	/* (non-Javadoc)
+	 * @see net.spy.memcached.MemcachedNode#forceDnsResolution()
+	 */
+	public void forceDnsResolution() {
+		SocketAddress sa = getSocketAddress();
+		if (sa instanceof InetSocketAddress) {
+			getLogger().info("forcing dns resolution, current socket address is: "+ sa);
+			setSocketAddress(new InetSocketAddress(((InetSocketAddress)sa).getHostString(), ((InetSocketAddress)sa).getPort()));
+			getLogger().info("forcing dns resolution, new socket address is: "+ getSocketAddress());
+		}
 	}
 
 	/* (non-Javadoc)
