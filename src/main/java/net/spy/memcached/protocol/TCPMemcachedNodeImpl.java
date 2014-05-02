@@ -379,7 +379,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 			if (newSa.isUnresolved()) {
 				getLogger().warn("New socket address created was unresolvable: %s", newSa);
 			} else if (!newSa.equals(sa)) {
-				getLogger().info("Dns appears to have changed, socket address from: %s, to: %s", getSocketAddress(), newSa);
+				getLogger().info("Dns appears to have changed, socket address from: %s, to: %s", sa, newSa);
 				setSocketAddress(newSa);
 			}
 		}
