@@ -375,9 +375,13 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	public void forceDnsResolution() {
 		SocketAddress sa = getSocketAddress();
 		if (sa instanceof InetSocketAddress) {
-			getLogger().info("forcing dns resolution, current socket address is: "+ sa);
-			setSocketAddress(new InetSocketAddress(((InetSocketAddress)sa).getHostString(), ((InetSocketAddress)sa).getPort()));
-			getLogger().info("forcing dns resolution, new socket address is: "+ getSocketAddress());
+			InetSocketAddress newSa = new InetSocketAddress(((InetSocketAddress)sa).getHostName(), ((InetSocketAddress)sa).getPort());
+			if (newSa.isUnresolved()) {
+				getLogger().warn("New socket address created was unresolvable: %s", newSa);
+			} else if (!newSa.equals(sa)) {
+				getLogger().info("Dns appears to have changed, socket address from: %s, to: %s", sa, newSa);
+				setSocketAddress(newSa);
+			}
 		}
 	}
 
