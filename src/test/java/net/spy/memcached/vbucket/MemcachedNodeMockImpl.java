@@ -49,6 +49,10 @@ public class MemcachedNodeMockImpl implements MemcachedNode {
         return 0;
     }
 
+    public long getContinuousTimeoutStart() {
+        return 0;
+    }
+
     public Operation getCurrentReadOp() {
         return null;
     }

@@ -12,6 +12,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import net.spy.memcached.MemcachedNode;
 import net.spy.memcached.compat.SpyObject;
@@ -47,6 +48,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 
 	// operation Future.get timeout counter
 	private final AtomicInteger continuousTimeout = new AtomicInteger(0);
+	private final AtomicLong continuousTimeoutStart = new AtomicLong(0);
 
 
 	public TCPMemcachedNodeImpl(SocketAddress sa, SocketChannel c,
@@ -399,6 +401,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	public final void reconnecting() {
 		reconnectAttempt++;
 		continuousTimeout.set(0);
+		continuousTimeoutStart.set(0);
 	}
 
 	/* (non-Javadoc)
@@ -407,6 +410,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	public final void connected() {
 		reconnectAttempt=0;
 		continuousTimeout.set(0);
+		continuousTimeoutStart.set(0);
 	}
 
 	/* (non-Javadoc)
@@ -502,9 +506,13 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	 */
 	public void setContinuousTimeout(boolean timedOut) {
 		if (timedOut && isActive()) {
-			continuousTimeout.incrementAndGet();
+			int count = continuousTimeout.incrementAndGet();
+			if (count == 1) {
+				continuousTimeoutStart.set(System.nanoTime());
+			}
 		} else {
 			continuousTimeout.set(0);
+			continuousTimeoutStart.set(0);
 		}
 	}
 
@@ -513,6 +521,13 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	 */
 	public int getContinuousTimeout() {
 		return continuousTimeout.get();
+	}
+
+	/* (non-Javadoc)
+	 * @see net.spy.memcached.MemcachedNode#getContinuousTimeoutStart
+	 */
+	public long getContinuousTimeoutStart() {
+		return continuousTimeoutStart.get();
 	}
 
 

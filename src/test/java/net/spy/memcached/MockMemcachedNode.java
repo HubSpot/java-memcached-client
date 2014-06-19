@@ -115,6 +115,10 @@ public class MockMemcachedNode implements MemcachedNode {
 		return 0;
 	}
 
+	public long getContinuousTimeoutStart() {
+		return 0;
+	}
+
 	public void setContinuousTimeout(boolean timedOut) {
 		// noop
 	}

@@ -137,4 +137,9 @@ public interface ConnectionFactory {
 	 * Maximum number of timeout exception for shutdown connection
 	 */
 	int getTimeoutExceptionThreshold();
+
+	/**
+	 * Minimum number of millis of continuous timeout exceptions before shutting down a connection
+	 */
+	long getTimeoutExceptionDurationThreshold();
 }

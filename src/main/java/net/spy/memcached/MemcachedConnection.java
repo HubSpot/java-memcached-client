@@ -74,6 +74,7 @@ public final class MemcachedConnection extends SpyObject implements Reconfigurab
 		new ConcurrentLinkedQueue<ConnectionObserver>();
 	private final OperationFactory opFact;
 	private final int timeoutExceptionThreshold;
+	private final long timeoutExceptionDurationThreshold;
         private final Collection<Operation> retryOps;
 	private final ConcurrentLinkedQueue<MemcachedNode> nodesToShutdown;
 
@@ -98,6 +99,7 @@ public final class MemcachedConnection extends SpyObject implements Reconfigurab
 		maxDelay = f.getMaxReconnectDelay();
 		opFact = opfactory;
 		timeoutExceptionThreshold = f.getTimeoutExceptionThreshold();
+		timeoutExceptionDurationThreshold = f.getTimeoutExceptionDurationThreshold();
 		selector=Selector.open();
 		retryOps = new ArrayList<Operation>();
 		nodesToShutdown = new ConcurrentLinkedQueue<MemcachedNode>();
@@ -282,9 +284,10 @@ public final class MemcachedConnection extends SpyObject implements Reconfigurab
 		// see if any connections blew up with large number of timeouts
 		for(SelectionKey sk : selector.keys()) {
 			MemcachedNode mn = (MemcachedNode)sk.attachment();
-			if (mn.getContinuousTimeout() > timeoutExceptionThreshold)
+			if (mn.getContinuousTimeout() > timeoutExceptionThreshold &&
+					(System.nanoTime() - mn.getContinuousTimeoutStart())/1000000 > timeoutExceptionDurationThreshold)
 			{
-				getLogger().warn("%s exceeded continuous timeout threshold", sk);
+				getLogger().warn("%s exceeded continuous timeout threshold: %d consecutive timeouts over %dms", sk, mn.getContinuousTimeout(), (System.nanoTime() - mn.getContinuousTimeoutStart())/1000000);
 				lostConnection(mn);
 			}
 		}

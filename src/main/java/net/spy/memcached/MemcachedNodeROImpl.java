@@ -158,6 +158,10 @@ class MemcachedNodeROImpl implements MemcachedNode {
 		throw new UnsupportedOperationException();
 	}
 
+	public long getContinuousTimeoutStart() {
+		throw new UnsupportedOperationException();
+	}
+
 	public void setContinuousTimeout(boolean isIncrease) {
 		throw new UnsupportedOperationException();
 	}

@@ -46,6 +46,7 @@ public class ConnectionFactoryBuilder {
 	private long opQueueMaxBlockTime = -1;
 
 	private int timeoutExceptionThreshold = DefaultConnectionFactory.DEFAULT_MAX_TIMEOUTEXCEPTION_THRESHOLD;
+	private long timeoutExceptionDurationThreshold = DefaultConnectionFactory.DEFAULT_MAX_TIMEOUTEXCEPTION_DURATION_THRESHOLD;
     private Config vBucketConfig;
 	/**
 	 * Set the operation queue factory.
@@ -67,6 +68,7 @@ public class ConnectionFactoryBuilder {
 		setReadBufferSize(cf.getReadBufSize());
 		setShouldOptimize(cf.shouldOptimize());
 		setTimeoutExceptionThreshold(cf.getTimeoutExceptionThreshold());
+		setTimeoutExceptionDurationThreshold(cf.getTimeoutExceptionDurationThreshold());
 		setTranscoder(cf.getDefaultTranscoder());
 		setUseNagleAlgorithm(cf.useNagleAlgorithm());
     }
@@ -239,6 +241,14 @@ public class ConnectionFactoryBuilder {
 		return this;
 	}
 
+	/**
+	 * Set the minimum timeout exception duration threshold
+	 */
+	public ConnectionFactoryBuilder setTimeoutExceptionDurationThreshold(long to) {
+		timeoutExceptionDurationThreshold = to;
+		return this;
+	}
+
     public Config getVBucketConfig() {
         return vBucketConfig;
     }
@@ -360,6 +370,11 @@ public class ConnectionFactoryBuilder {
 			@Override
 			public int getTimeoutExceptionThreshold() {
 				return timeoutExceptionThreshold;
+			}
+
+			@Override
+			public long getTimeoutExceptionDurationThreshold() {
+				return timeoutExceptionDurationThreshold;
 			}
 
 		};
