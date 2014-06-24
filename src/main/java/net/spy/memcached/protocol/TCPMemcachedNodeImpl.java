@@ -45,6 +45,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	private long defaultOpTimeout;
 
 	// operation Future.get timeout counter
+	private Object continuousTimeoutLock = new Object();
 	private int continuousTimeout = 0;
 	private long continuousTimeoutStart = 0;
 
@@ -508,23 +509,29 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 		}
 	}
 
-	private synchronized void setContinuousTimeoutStatistics() {
-		if (++continuousTimeout == 1) {
-			continuousTimeoutStart = System.nanoTime();
+	private void setContinuousTimeoutStatistics() {
+		synchronized(continuousTimeoutLock) {
+			if (++continuousTimeout == 1) {
+				continuousTimeoutStart = System.nanoTime();
+			}
 		}
 	}
 
-	private synchronized void resetContinuousTimeoutStatistics() {
-		continuousTimeout = 0;
-		continuousTimeoutStart = 0;
+	private void resetContinuousTimeoutStatistics() {
+		synchronized(continuousTimeoutLock) {
+			continuousTimeout = 0;
+			continuousTimeoutStart = 0;
+		}
 	}
 
-	public synchronized boolean hasExceededContinuousTimeoutThresholds(int countThreshold, long durationThreshold) {
-		if (continuousTimeout > countThreshold && (System.nanoTime() - continuousTimeoutStart)/1000000 > durationThreshold) {
-			getLogger().warn("%s exceeded continuous timeout threshold: %d consecutive timeouts over %dms", socketAddress, continuousTimeout, (System.nanoTime() - continuousTimeoutStart)/1000000);
-			return true;
+	public boolean hasExceededContinuousTimeoutThresholds(int countThreshold, long durationThreshold) {
+		synchronized(continuousTimeoutLock) {
+			if (continuousTimeout > countThreshold && (System.nanoTime() - continuousTimeoutStart)/1000000 > durationThreshold) {
+				getLogger().warn("%s exceeded continuous timeout threshold: %d consecutive timeouts over %dms", socketAddress, continuousTimeout, (System.nanoTime() - continuousTimeoutStart)/1000000);
+				return true;
+			}
+			return false;
 		}
-		return false;
 	}
 
 	public final void fixupOps() {
