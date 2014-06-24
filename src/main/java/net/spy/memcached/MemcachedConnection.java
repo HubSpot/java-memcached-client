@@ -284,10 +284,7 @@ public final class MemcachedConnection extends SpyObject implements Reconfigurab
 		// see if any connections blew up with large number of timeouts
 		for(SelectionKey sk : selector.keys()) {
 			MemcachedNode mn = (MemcachedNode)sk.attachment();
-			if (mn.getContinuousTimeout() > timeoutExceptionThreshold &&
-					(System.nanoTime() - mn.getContinuousTimeoutStart())/1000000 > timeoutExceptionDurationThreshold)
-			{
-				getLogger().warn("%s exceeded continuous timeout threshold: %d consecutive timeouts over %dms", sk, mn.getContinuousTimeout(), (System.nanoTime() - mn.getContinuousTimeoutStart())/1000000);
+			if (mn.hasExceededContinuousTimeoutThresholds(timeoutExceptionThreshold, timeoutExceptionDurationThreshold)) {
 				lostConnection(mn);
 			}
 		}
