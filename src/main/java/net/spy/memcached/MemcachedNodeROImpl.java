@@ -154,7 +154,7 @@ class MemcachedNodeROImpl implements MemcachedNode {
 		throw new UnsupportedOperationException();
 	}
 
-	public int getContinuousTimeout() {
+	public boolean hasExceededContinuousTimeoutThresholds(int countThreshold, long durationThreshold) {
 		throw new UnsupportedOperationException();
 	}
 

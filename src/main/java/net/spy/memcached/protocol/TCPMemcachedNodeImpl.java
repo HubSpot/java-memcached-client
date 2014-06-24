@@ -11,7 +11,6 @@ import java.util.Collection;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import net.spy.memcached.MemcachedNode;
 import net.spy.memcached.compat.SpyObject;
@@ -46,7 +45,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	private long defaultOpTimeout;
 
 	// operation Future.get timeout counter
-	private final AtomicInteger continuousTimeout = new AtomicInteger(0);
+	private Object continuousTimeoutLock = new Object();
+	private int continuousTimeout = 0;
+	private long continuousTimeoutStart = 0;
 
 
 	public TCPMemcachedNodeImpl(SocketAddress sa, SocketChannel c,
@@ -398,7 +399,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	 */
 	public final void reconnecting() {
 		reconnectAttempt++;
-		continuousTimeout.set(0);
+		resetContinuousTimeoutStatistics();
 	}
 
 	/* (non-Javadoc)
@@ -406,7 +407,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	 */
 	public final void connected() {
 		reconnectAttempt=0;
-		continuousTimeout.set(0);
+		resetContinuousTimeoutStatistics();
 	}
 
 	/* (non-Javadoc)
@@ -502,19 +503,36 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	 */
 	public void setContinuousTimeout(boolean timedOut) {
 		if (timedOut && isActive()) {
-			continuousTimeout.incrementAndGet();
+			setContinuousTimeoutStatistics();
 		} else {
-			continuousTimeout.set(0);
+			resetContinuousTimeoutStatistics();
 		}
 	}
 
-	/* (non-Javadoc)
-	 * @see net.spy.memcached.MemcachedNode#getContinuousTimeout
-	 */
-	public int getContinuousTimeout() {
-		return continuousTimeout.get();
+	private void setContinuousTimeoutStatistics() {
+		synchronized(continuousTimeoutLock) {
+			if (++continuousTimeout == 1) {
+				continuousTimeoutStart = System.nanoTime();
+			}
+		}
 	}
 
+	private void resetContinuousTimeoutStatistics() {
+		synchronized(continuousTimeoutLock) {
+			continuousTimeout = 0;
+			continuousTimeoutStart = 0;
+		}
+	}
+
+	public boolean hasExceededContinuousTimeoutThresholds(int countThreshold, long durationThreshold) {
+		synchronized(continuousTimeoutLock) {
+			if (continuousTimeout > countThreshold && (System.nanoTime() - continuousTimeoutStart)/1000000 > durationThreshold) {
+				getLogger().warn("%s exceeded continuous timeout threshold: %d consecutive timeouts over %dms", socketAddress, continuousTimeout, (System.nanoTime() - continuousTimeoutStart)/1000000);
+				return true;
+			}
+			return false;
+		}
+	}
 
 	public final void fixupOps() {
 		// As the selection key can be changed at any point due to node

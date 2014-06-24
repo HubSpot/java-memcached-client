@@ -202,5 +202,5 @@ public interface MemcachedNode {
 	 */
 	void setContinuousTimeout(boolean timedOut);
 
-	int getContinuousTimeout();
+	boolean hasExceededContinuousTimeoutThresholds(int countThreshold, long durationThreshold);
 }

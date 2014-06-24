@@ -45,8 +45,8 @@ public class MemcachedNodeMockImpl implements MemcachedNode {
         return null;
     }
 
-    public int getContinuousTimeout() {
-        return 0;
+    public boolean hasExceededContinuousTimeoutThresholds(int countThreshold, long durationThreshold) {
+        return false;
     }
 
     public Operation getCurrentReadOp() {
