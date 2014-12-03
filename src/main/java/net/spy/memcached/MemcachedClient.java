@@ -1625,8 +1625,9 @@ public class MemcachedClient extends SpyThread
 				throw new OperationTimeoutException(
 					"Mutate operation timed out, unable to modify counter ["
 						+ key + "]");
+			} else {
+				MemcachedConnection.opSucceeded(op);
 			}
-			MemcachedConnection.opSucceeded(op);
 		} catch (InterruptedException e) {
 			throw new RuntimeException("Interrupted", e);
 		}
