@@ -1608,7 +1608,7 @@ public class MemcachedClient extends SpyThread
 	private long mutate(Mutator m, String key, int by, long def, int exp) {
 		final AtomicLong rv=new AtomicLong();
 		final CountDownLatch latch=new CountDownLatch(1);
-		addOp(key, opFact.mutate(m, key, by, def, exp, new OperationCallback() {
+		final Operation op = opFact.mutate(m, key, by, def, exp, new OperationCallback() {
 					public void receivedStatus(OperationStatus s) {
 						// XXX:  Potential abstraction leak.
 						// The handling of incr/decr in the binary protocol
@@ -1617,12 +1617,16 @@ public class MemcachedClient extends SpyThread
 					}
 					public void complete() {
 						latch.countDown();
-					}}));
+					}});
+		addOp(key, op);
 		try {
 			if (!latch.await(operationTimeout, TimeUnit.MILLISECONDS)) {
+				MemcachedConnection.opTimedOut(op);
 				throw new OperationTimeoutException(
 					"Mutate operation timed out, unable to modify counter ["
 						+ key + "]");
+			} else {
+				MemcachedConnection.opSucceeded(op);
 			}
 		} catch (InterruptedException e) {
 			throw new RuntimeException("Interrupted", e);

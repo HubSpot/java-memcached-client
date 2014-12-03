@@ -44,7 +44,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject
 	private ArrayList<Operation> reconnectBlocked;
 	private long defaultOpTimeout;
 
-	// operation Future.get timeout counter
+	// operation Future.(get|mutate) timeout counter
 	private final Object continuousTimeoutLock = new Object();
 	private int continuousTimeout = 0;
 	private long continuousTimeoutStart = 0;
