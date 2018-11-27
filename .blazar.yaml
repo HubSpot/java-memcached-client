@@ -23,5 +23,5 @@ steps:
             -DrepositoryId=s3
             -Durl=s3://hubspot-maven-artifacts-prod/releases
             -DpomFile=pom.xml
-            -Dfile=build/jars/spymemcached-2.11.1.jar
-            -Dsources=build/sources/spymemcached-2.11.1.jar
+            -Dfile=build/jars/spymemcached-no-version.jar
+            -Dsources=build/sources/spymemcached-no-version.jar
