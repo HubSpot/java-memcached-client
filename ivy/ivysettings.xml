@@ -29,6 +29,9 @@
   <property name="repo.couchbase"
     value="http://files.couchbase.com/maven2"
     override="false"/>
+  <property name="repo.hubspot"
+    value="https://build.hubteam.com/nexus-maven/repository/hubspot-development"
+    override="false"/>
 
   <property name="maven2.pattern"
     value="[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier])"/>
@@ -47,6 +50,8 @@
 
 
     <chain name="default">
+      <ibiblio name="hubspot" root="${repo.hubspot}"
+        pattern="${maven2.pattern.ext}" m2compatible="true"/>
       <ibiblio name="maven2" root="${repo.maven.org}"
         pattern="${maven2.pattern.ext}" m2compatible="true"/>
       <ibiblio name="ibiblio" root="${ibiblio.maven.org}"
