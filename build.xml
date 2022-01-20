@@ -40,6 +40,7 @@
   <property name="build.src.dir" value="${build.dir}/src" />
   <property name="etc.dir" value="${basedir}/etc" />
   <property name="lib.dir" value="${basedir}/lib" />
+  <property name="user.lib.dir" value="${basedir}/userprovidedlib" />
   <property name="src.dir" value="${base.src.dir}/main/java" />
   <property name="test.dir" value="${base.src.dir}/test/java" />
   <property name="script.src.dir" value="${base.src.dir}/scripts" />
@@ -97,7 +98,7 @@
   <property name="ivy.dir" location="${basedir}/ivy" />
   <property name="ivysettings.xml" location="${ivy.dir}/ivysettings.xml"/>
   <loadproperties srcfile="${ivy.dir}/libraries.properties"/>
-  <property name="ivy.jar" location="${lib.dir}/ivy-${ivy.version}.jar"/>
+  <property name="ivy.jar" location="${user.lib.dir}/ivy-${ivy.version}.jar"/>
   <property name="ivy_repo_url"
       value="http://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar" />
   <property name="mvn_repo_url"
