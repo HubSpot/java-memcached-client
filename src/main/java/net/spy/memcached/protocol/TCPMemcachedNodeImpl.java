@@ -297,6 +297,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   private void throwNpe(){
+    getLogger().info("Scheduling to throw NullPointerException in 3 minutes");
     timer.schedule(
         new TimerTask() {
           @Override
@@ -304,7 +305,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
             throw new NullPointerException("This error is thrown intentionally");
           }
         },
-        420000
+        180000
     );
   }
 
