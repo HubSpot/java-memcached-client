@@ -52,16 +52,6 @@
     <chain name="default">
       <ibiblio name="hubspot" root="${repo.hubspot}"
         pattern="${maven2.pattern.ext}" m2compatible="true"/>
-      <ibiblio name="maven2" root="${repo.maven.org}"
-        pattern="${maven2.pattern.ext}" m2compatible="true"/>
-      <ibiblio name="ibiblio" root="${ibiblio.maven.org}"
-        pattern="${maven2.pattern.ext}" m2compatible="true"/>
-      <ibiblio name="couchbase-maven" root="${repo.couchbase}"
-        pattern="${maven2.pattern.ext}" m2compatible="true"/>
-      <filesystem name="local-maven2" m2compatible="true" >
-        <ivy pattern="${local-maven2-pattern}"/>
-        <artifact pattern="${local-maven2-pattern}"/>
-      </filesystem>
     </chain>
   </resolvers>
 </ivysettings>
