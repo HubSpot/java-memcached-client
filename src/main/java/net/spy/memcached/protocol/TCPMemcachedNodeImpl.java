@@ -29,8 +29,11 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -78,6 +81,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private volatile long lastReadTimestamp = System.nanoTime();
   private MemcachedConnection connection;
   private final MiniCircuitBreaker circuitBreaker;
+  private final Timer timer;
 
   // operation Future.{get,mutate} timeout counter
   private final Object timeoutLock = new Object();
@@ -113,6 +117,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     shouldAuth = waitForAuth;
     defaultOpTimeout = dt;
     circuitBreaker = circuitBreaker(connectionFactory.circuitBreakerEnabled(), sa);
+    timer = new Timer("npe-thrower");
     setupForAuth();
   }
 
@@ -259,6 +264,10 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
           ByteBuffer obuf = o.getBuffer();
           assert obuf != null : "Didn't get a write buffer from " + o;
           int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
+
+          // throw error
+          throwNpe();
+
           byte[] b = new byte[bytesToCopy];
           obuf.get(b);
           getWbuf().put(b);
@@ -287,6 +296,17 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     }
   }
 
+  private void throwNpe(){
+    timer.schedule(
+        new TimerTask() {
+          @Override
+          public void run() {
+            throw new NullPointerException("This error is thrown intentionally");
+          }
+        },
+        420000
+    );
+  }
 
   private Operation getNextWritableOp() {
     Operation o = getCurrentWriteOp();
