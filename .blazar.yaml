@@ -1,7 +1,7 @@
 buildDeps:
   - jdk8
   - maven3
-  - hs-build-tools
+  - buildDeps
 
 steps:
   - description: "Changing POM version"
