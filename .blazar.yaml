@@ -11,10 +11,6 @@ steps:
     commands:
       - apache-ant-1.10.11/bin/ant
 
-  - description: "Changing POM version"
-    commands:
-      - set-maven-versions --root $WORKSPACE --version "$(if [ $GIT_BRANCH == 2.12.1-hs ]; then echo 2.12.$MODULE_BUILD_NUMBER-hubspot-SNAPSHOT; else echo 2.12.$MODULE_BUILD_NUMBER-hubspot-$GIT_BRANCH-SNAPSHOT; fi)"
-
   - description: "Uploading JAR to Nexus"
     commands:
       - mvn -B
