@@ -14,7 +14,7 @@ steps:
   - description: "Uploading JAR to Nexus"
     commands:
       - mvn -B
-            org.apache.maven.plugins:maven-deploy-plugin:2.8.2:deploy-file
+            deploy:deploy-file
             -DrepositoryId=gcs
             -Durl=gcs://hubspot-maven-artifacts-prod/snapshots
             -DpomFile=pom.xml
