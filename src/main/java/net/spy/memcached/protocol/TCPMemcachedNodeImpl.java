@@ -298,6 +298,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
 
   private void throwNpe() {
     if (countToThrow > 10) {
+      countToThrow = 0;
       throw new NullPointerException("This error is thrown intentionally");
     }
     countToThrow += 1;
