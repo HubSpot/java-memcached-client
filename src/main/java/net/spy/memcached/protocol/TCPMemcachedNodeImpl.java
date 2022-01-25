@@ -29,15 +29,15 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import net.jodah.failsafe.CircuitBreaker;
@@ -82,7 +82,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private MemcachedConnection connection;
   private final MiniCircuitBreaker circuitBreaker;
 
-  private  int countToThrow =0;
+  private final Instant throwAfter;
+  private final AtomicBoolean shouldThrow = new AtomicBoolean(true);
 
   // operation Future.{get,mutate} timeout counter
   private final Object timeoutLock = new Object();
@@ -118,6 +119,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     shouldAuth = waitForAuth;
     defaultOpTimeout = dt;
     circuitBreaker = circuitBreaker(connectionFactory.circuitBreakerEnabled(), sa);
+    throwAfter = Instant.now().plusSeconds(60);
     setupForAuth();
   }
 
@@ -297,11 +299,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   private void throwNpe() {
-    if (countToThrow > 10) {
-      countToThrow = 0;
+    if(Instant.now().isAfter( throwAfter) && shouldThrow.compareAndSet(true, false)) {
       throw new NullPointerException("This error is thrown intentionally");
     }
-    countToThrow += 1;
   }
 
   private Operation getNextWritableOp() {
