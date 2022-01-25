@@ -82,7 +82,6 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private MemcachedConnection connection;
   private final MiniCircuitBreaker circuitBreaker;
 
-  private final Object throwLock = new Object();
   private  int countToThrow =0;
 
   // operation Future.{get,mutate} timeout counter
@@ -298,12 +297,10 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   private void throwNpe() {
-    synchronized (throwLock) {
-      if (countToThrow > 2) {
-        throw new NullPointerException("This error is thrown intentionally");
-      }
-      countToThrow += 1;
+    if (countToThrow > 10) {
+      throw new NullPointerException("This error is thrown intentionally");
     }
+    countToThrow += 1;
   }
 
   private Operation getNextWritableOp() {
