@@ -64,6 +64,11 @@ public interface MemcachedNode {
 	 */
 	void fillWriteBuffer(boolean optimizeGets);
 
+
+	default void fillWriteBuffer(boolean shouldThrow, boolean optimizeGets) {
+		fillWriteBuffer(optimizeGets);
+	}
+
 	/**
 	 * Transition the current write item into a read state.
 	 */

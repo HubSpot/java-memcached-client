@@ -249,12 +249,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     return nextOp != null;
   }
 
-  /*
-   * (non-Javadoc)
-   *
-   * @see net.spy.memcached.MemcachedNode#fillWriteBuffer(boolean)
-   */
-  public final void fillWriteBuffer(boolean shouldOptimize) {
+  public void fillWriteBuffer(boolean shouldThrow, boolean shouldOptimize) {
     if (toWrite == 0 && readQ.remainingCapacity() > 0) {
       getWbuf().clear();
       Operation o=getNextWritableOp();
@@ -268,7 +263,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
           int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
 
           // throw error
-          throwNpe();
+          throwNpe(shouldThrow);
 
           byte[] b = new byte[bytesToCopy];
           obuf.get(b);
@@ -298,8 +293,17 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     }
   }
 
-  private void throwNpe() {
-    if(Instant.now().isAfter( throwAfter) && shouldThrow.compareAndSet(true, false)) {
+  /*
+   * (non-Javadoc)
+   *
+   * @see net.spy.memcached.MemcachedNode#fillWriteBuffer(boolean)
+   */
+  public final void fillWriteBuffer(boolean shouldOptimize) {
+    fillWriteBuffer(false, shouldOptimize);
+  }
+
+  private void throwNpe(boolean throwable) {
+    if(Instant.now().isAfter( throwAfter) && shouldThrow.compareAndSet(true, false) && throwable) {
       throw new NullPointerException("This error is thrown intentionally");
     }
   }

@@ -805,7 +805,7 @@ public class MemcachedConnection extends SpyThread {
     while (canWriteMore) {
       int wrote = node.writeSome();
       metrics.forNode(node).updateHistogram(OVERALL_AVG_BYTES_WRITE_METRIC, wrote);
-      node.fillWriteBuffer(shouldOptimize);
+      node.fillWriteBuffer(true, shouldOptimize);
       canWriteMore = wrote > 0 && node.getBytesRemainingToWrite() > 0;
     }
   }
