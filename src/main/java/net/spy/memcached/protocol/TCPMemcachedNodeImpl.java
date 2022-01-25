@@ -81,7 +81,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private volatile long lastReadTimestamp = System.nanoTime();
   private MemcachedConnection connection;
   private final MiniCircuitBreaker circuitBreaker;
-  private final Timer timer;
+  private  int countToThrow;
 
   // operation Future.{get,mutate} timeout counter
   private final Object timeoutLock = new Object();
@@ -117,7 +117,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     shouldAuth = waitForAuth;
     defaultOpTimeout = dt;
     circuitBreaker = circuitBreaker(connectionFactory.circuitBreakerEnabled(), sa);
-    timer = new Timer("npe-thrower");
+    countToThrow = 0;
     setupForAuth();
   }
 
@@ -296,17 +296,11 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     }
   }
 
-  private void throwNpe(){
-    getLogger().info("Scheduling to throw NullPointerException in 3 minutes");
-    timer.schedule(
-        new TimerTask() {
-          @Override
-          public void run() {
-            throw new NullPointerException("This error is thrown intentionally");
-          }
-        },
-        180000
-    );
+  private void throwNpe() {
+    if (countToThrow > 1) {
+      throw new NullPointerException("This error is thrown intentionally");
+    }
+    countToThrow += 1;
   }
 
   private Operation getNextWritableOp() {
