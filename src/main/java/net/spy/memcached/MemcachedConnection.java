@@ -804,7 +804,7 @@ public class MemcachedConnection extends SpyThread {
   }
 
   private void handleWrites(final boolean throwable, final MemcachedNode node) throws IOException {
-    getLogger().info("Call fill write buffer [Throwable: {}]", throwable);
+    getLogger().info("Call fill write buffer [Throwable: %s]", throwable);
     node.fillWriteBuffer(throwable, shouldOptimize);
     boolean canWriteMore = node.getBytesRemainingToWrite() > 0;
     while (canWriteMore) {
