@@ -302,9 +302,11 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   private void throwNpe(boolean throwable) {
-    getLogger().info("Check time (Current: {}| ThrowTime: {}) and throw", Instant.now(), throwAfter);
-    if(Instant.now().isAfter( throwAfter) && shouldThrow.compareAndSet(true, false) && throwable) {
-      throw new NullPointerException("This error is thrown intentionally");
+    if (throwable && shouldThrow.compareAndSet(true, false)) {
+      getLogger().info("Check time (Current: {}| ThrowTime: {}) and throw", Instant.now(), throwAfter);
+      if (Instant.now().isAfter(throwAfter)) {
+        throw new NullPointerException("This error is thrown intentionally");
+      }
     }
   }
 

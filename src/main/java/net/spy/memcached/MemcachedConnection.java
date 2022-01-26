@@ -587,7 +587,7 @@ public class MemcachedConnection extends SpyThread {
         if (readyForIO) {
           try {
             if (node.getWbuf().hasRemaining()) {
-              handleWrites(node);
+              handleWrites(true, node);
             }
           } catch (IOException e) {
             getLogger().warn("Exception handling write", e);
@@ -800,12 +800,16 @@ public class MemcachedConnection extends SpyThread {
    * @throws IOException can be raised during writing failures.
    */
   private void handleWrites(final MemcachedNode node) throws IOException {
-    node.fillWriteBuffer(true, shouldOptimize);
+    handleWrites(false, node);
+  }
+
+  private void handleWrites(final boolean throwable, final MemcachedNode node) throws IOException {
+    node.fillWriteBuffer(throwable, shouldOptimize);
     boolean canWriteMore = node.getBytesRemainingToWrite() > 0;
     while (canWriteMore) {
       int wrote = node.writeSome();
       metrics.forNode(node).updateHistogram(OVERALL_AVG_BYTES_WRITE_METRIC, wrote);
-      node.fillWriteBuffer(true, shouldOptimize);
+      node.fillWriteBuffer(throwable, shouldOptimize);
       canWriteMore = wrote > 0 && node.getBytesRemainingToWrite() > 0;
     }
   }
