@@ -118,7 +118,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     shouldAuth = waitForAuth;
     defaultOpTimeout = dt;
     circuitBreaker = circuitBreaker(connectionFactory.circuitBreakerEnabled(), sa);
-    throwAfter = Instant.now().plusSeconds(60);
+    throwAfter = Instant.now().plusSeconds(30);
     setupForAuth();
   }
 
@@ -302,6 +302,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   private void throwNpe(boolean throwable) {
+    getLogger().info("Check time (Current: {}| ThrowTime: {}) and throw", Instant.now(), throwAfter);
     if(Instant.now().isAfter( throwAfter) && shouldThrow.compareAndSet(true, false) && throwable) {
       throw new NullPointerException("This error is thrown intentionally");
     }

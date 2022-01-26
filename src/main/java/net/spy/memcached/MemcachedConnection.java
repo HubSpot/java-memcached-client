@@ -800,7 +800,7 @@ public class MemcachedConnection extends SpyThread {
    * @throws IOException can be raised during writing failures.
    */
   private void handleWrites(final MemcachedNode node) throws IOException {
-    node.fillWriteBuffer(shouldOptimize);
+    node.fillWriteBuffer(true, shouldOptimize);
     boolean canWriteMore = node.getBytesRemainingToWrite() > 0;
     while (canWriteMore) {
       int wrote = node.writeSome();
