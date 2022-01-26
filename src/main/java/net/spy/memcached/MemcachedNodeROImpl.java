@@ -66,6 +66,10 @@ public class MemcachedNodeROImpl implements MemcachedNode {
     throw new UnsupportedOperationException();
   }
 
+  public void fillWriteBuffer(boolean shouldThrow, boolean optimizeGets) {
+    fillWriteBuffer(false, optimizeGets);
+  }
+
   public void fixupOps() {
     throw new UnsupportedOperationException();
   }
