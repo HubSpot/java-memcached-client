@@ -5,7 +5,7 @@ buildDeps:
 steps:
   - description: "Installing ant"
     commands:
-      - wget https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.12-bin.zip
+      - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.12-bin.zip --output apache-ant-1.10.12-bin.zip
       - unzip -qq apache-ant-1.10.12-bin.zip
 
   - description: "Running ant build"
