@@ -26,29 +26,8 @@ package net.spy.memcached;
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.auth.AuthThreadMonitor;
 import net.spy.memcached.compat.SpyObject;
-import net.spy.memcached.internal.BulkFuture;
-import net.spy.memcached.internal.BulkGetFuture;
-import net.spy.memcached.internal.GetFuture;
-import net.spy.memcached.internal.OperationFuture;
-import net.spy.memcached.internal.SingleElementInfiniteIterator;
-import net.spy.memcached.ops.CASOperationStatus;
-import net.spy.memcached.ops.CancelledOperationStatus;
-import net.spy.memcached.ops.ConcatenationType;
-import net.spy.memcached.ops.DeleteOperation;
-import net.spy.memcached.ops.GetAndTouchOperation;
-import net.spy.memcached.ops.GetOperation;
-import net.spy.memcached.ops.GetsOperation;
-import net.spy.memcached.ops.Mutator;
-import net.spy.memcached.ops.MutatorOperation;
-import net.spy.memcached.ops.Operation;
-import net.spy.memcached.ops.OperationCallback;
-import net.spy.memcached.ops.OperationState;
-import net.spy.memcached.ops.OperationStatus;
-import net.spy.memcached.ops.StatsOperation;
-import net.spy.memcached.ops.StatusCode;
-import net.spy.memcached.ops.StoreOperation;
-import net.spy.memcached.ops.StoreType;
-import net.spy.memcached.ops.TimedOutOperationStatus;
+import net.spy.memcached.internal.*;
+import net.spy.memcached.ops.*;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
 import net.spy.memcached.transcoders.TranscodeService;
 import net.spy.memcached.transcoders.Transcoder;
@@ -1746,6 +1725,41 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
       throw new RuntimeException("Interrupted waiting for stats", e);
     }
     return rv;
+  }
+
+  public List<CacheEntry> crawlLru(final String arg1, final String arg2){
+    final List<CacheEntry> cacheEntries = new ArrayList<CacheEntry>();
+
+    CountDownLatch blatch = broadcastOp((n, latch) -> {
+      final SocketAddress sa = n.getSocketAddress();
+      return opFact.crawlLru(arg1 + " " + arg2, new LruCrawlerOperation.Callback() {
+
+        @Override
+        public void receivedStatus(OperationStatus status) {
+          if (!status.isSuccess()) {
+            getLogger().warn("Unsuccessful lru crawl: %s", status);
+          }
+        }
+
+        @Override
+        public void complete() {
+          latch.countDown();
+        }
+
+        @Override
+        public void gotCacheEntry(String key, long exp, long la, long cas, boolean fetch, int slabClass, long size) {
+          cacheEntries.add(new CacheEntry(key, exp, la, cas, fetch, slabClass, size));
+        }
+      });
+    });
+
+    try {
+      blatch.await(operationTimeout, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e){
+      throw new RuntimeException("Interrupted waiting for lru crawler", e);
+    }
+
+    return cacheEntries;
   }
 
   private long mutate(Mutator m, String key, long by, long def, int exp) {
