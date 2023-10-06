@@ -6,7 +6,7 @@ steps:
   - description: "Installing ant"
     container: host
     commands:
-      - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.13-bin.zip
+      - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.13-bin.zip --output apache-ant-1.10.13-bin.zip
       - unzip -qq apache-ant-1.10.13-bin.zip
 
   - description: "Running ant build"
