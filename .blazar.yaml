@@ -4,19 +4,23 @@ buildDeps:
 
 steps:
   - description: "Installing ant"
+    container: host
     commands:
       - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.12-bin.zip --output apache-ant-1.10.12-bin.zip
       - unzip -qq apache-ant-1.10.12-bin.zip
 
   - description: "Running ant build"
+    container: host
     commands:
       - apache-ant-1.10.12/bin/ant
 
   - description: "Changing POM version"
+    container: host
     commands:
       - set-maven-versions --root $WORKSPACE --version "$(if [ $GIT_BRANCH == 2.12.1-hs ]; then echo 2.12.$MODULE_BUILD_NUMBER-hubspot-SNAPSHOT; else echo 2.12.$MODULE_BUILD_NUMBER-hubspot-$GIT_BRANCH-SNAPSHOT; fi)"
 
   - description: "Uploading JAR to Nexus"
+    container: host
     commands:
       - mvn -B
             org.apache.maven.plugins:maven-deploy-plugin:2.8.2:deploy-file
