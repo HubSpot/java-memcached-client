@@ -13,6 +13,8 @@ steps:
     container: host
     commands:
       - ls
+      - ls apache-ant-1.10.13
+      - ls apache-ant-1.10.13/bin
       - apache-ant-1.10.13/bin/ant
 
   - description: "Changing POM version"
