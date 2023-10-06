@@ -12,6 +12,7 @@ steps:
   - description: "Running ant build"
     container: host
     commands:
+      - ls
       - apache-ant-1.10.13/bin/ant
 
   - description: "Changing POM version"
