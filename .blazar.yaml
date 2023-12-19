@@ -1,19 +1,7 @@
-buildDeps:
-  - hs-build-tools
-  - jdk8
-  - maven3
+buildpack:
+  name: Blazar-Buildpack-Java-prebuilt
 
-env:
-  MERCEDES_HOST: build.hubteam.com
-
-constantEnv:
-  JAVA_BUILDSCRIPTS_DIR: /usr/share/hubspot/build/workspace/buildpack/scripts
-
-cloneBuildpack:
-  source: "java/shared"
-  target: "/usr/share/hubspot/build/workspace/buildpack"
-
-steps:
+before:
   - description: "Installing ant"
     commands:
       - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.14-bin.zip --output apache-ant-1.10.14-bin.zip
@@ -23,20 +11,11 @@ steps:
     commands:
       - apache-ant-1.10.14/bin/ant
 
-  - description: "Changing POM version"
+  - description: "Copy files"
     commands:
-      - set-maven-versions --root $WORKSPACE --version "$(if [ $GIT_BRANCH == 2.12.1-hs ]; then echo 2.12.1-hubspot-SNAPSHOT; else echo 1.0-$GIT_BRANCH-SNAPSHOT; fi)"
-
-  - description: "Enable maven extensions" # we need the S3 wagon and mercedes reporting
-    commands:
-      - '"$JAVA_BUILDSCRIPTS_DIR/setup_maven_extensions.py" --module-dir "$PWD" --repo "$GIT_REPO"'
-
-  - description: "Uploading JAR to Nexus"
-    commands:
-      - mvn -B
-            org.apache.maven.plugins:maven-deploy-plugin:2.8.2:deploy-file
-            -DrepositoryId=hubspot-maven-artifacts-prod
-            -Durl=s3://hubspot-maven-artifacts-prod/artifacts/snapshots
-            -DpomFile=pom.xml
-            -Dfile=build/jars/spymemcached-no-version.jar
-            -Dsources=build/sources/spymemcached-no-version.jar
+      - mkdir spymemcached-2.12.1
+      - cp pom.xml spymemcached-2.12.1/pom.xml
+      - cp build/jars/spymemcached-no-version.jar spymemcached-2.12.1/main.jar
+      - cp build/sources/spymemcached-no-version.jar spymemcached-2.12.1/sources.jar
+      - rm -rf apache-ant-1.10.14
+      - rm -rf build
