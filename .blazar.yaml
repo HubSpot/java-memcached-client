@@ -30,7 +30,6 @@ steps:
   - description: "Enable maven extensions" # we need the S3 wagon and mercedes reporting
     commands:
       - '"$JAVA_BUILDSCRIPTS_DIR/setup_maven_extensions.py" --module-dir "$PWD" --repo "$GIT_REPO"'
-      - '"$JAVA_BUILDSCRIPTS_DIR/write-ge-creds"'
 
   - description: "Uploading JAR to Nexus"
     commands:
