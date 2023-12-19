@@ -1,6 +1,17 @@
 buildDeps:
+  - hs-build-tools
   - jdk8
   - maven3
+
+env:
+  MERCEDES_HOST: build.hubteam.com
+
+constantEnv:
+  JAVA_BUILDSCRIPTS_DIR: /usr/share/hubspot/build/workspace/buildpack/scripts
+
+cloneBuildpack:
+  source: "java/shared"
+  target: "/usr/share/hubspot/build/workspace/buildpack"
 
 steps:
   - description: "Installing ant"
@@ -15,6 +26,11 @@ steps:
   - description: "Changing POM version"
     commands:
       - set-maven-versions --root $WORKSPACE --version "$(if [ $GIT_BRANCH == 2.12.1-hs ]; then echo 2.12.1-hubspot-SNAPSHOT; else echo 1.0-$GIT_BRANCH-SNAPSHOT; fi)"
+
+  - description: "Enable maven extensions" # we need the S3 wagon and mercedes reporting
+    commands:
+      - '"$JAVA_BUILDSCRIPTS_DIR/setup_maven_extensions.py" --module-dir "$PWD" --repo "$GIT_REPO"'
+      - '"$JAVA_BUILDSCRIPTS_DIR/write-ge-creds"'
 
   - description: "Uploading JAR to Nexus"
     commands:
