@@ -1,27 +1,21 @@
-buildDeps:
-  - jdk8
-  - maven3
+buildpack:
+  name: Blazar-Buildpack-Java-prebuilt
 
-steps:
+before:
   - description: "Installing ant"
     commands:
-      - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.12-bin.zip --output apache-ant-1.10.12-bin.zip
-      - unzip -qq apache-ant-1.10.12-bin.zip
+      - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.14-bin.zip --output apache-ant-1.10.14-bin.zip
+      - unzip -qq apache-ant-1.10.14-bin.zip
 
   - description: "Running ant build"
     commands:
-      - apache-ant-1.10.12/bin/ant
+      - apache-ant-1.10.14/bin/ant
 
-  - description: "Changing POM version"
+  - description: "Copy files"
     commands:
-      - set-maven-versions --root $WORKSPACE --version "$(if [ $GIT_BRANCH == 2.12.1-hs ]; then echo 2.12.$MODULE_BUILD_NUMBER-hubspot-SNAPSHOT; else echo 2.12.$MODULE_BUILD_NUMBER-hubspot-$GIT_BRANCH-SNAPSHOT; fi)"
-
-  - description: "Uploading JAR to Nexus"
-    commands:
-      - mvn -B
-            org.apache.maven.plugins:maven-deploy-plugin:2.8.2:deploy-file
-            -DrepositoryId=hubspot-maven-artifacts-prod
-            -Durl=s3://hubspot-maven-artifacts-prod/artifacts/snapshots
-            -DpomFile=pom.xml
-            -Dfile=build/jars/spymemcached-no-version.jar
-            -Dsources=build/sources/spymemcached-no-version.jar
+      - mkdir spymemcached-2.12.1
+      - cp pom.xml spymemcached-2.12.1/pom.xml
+      - cp build/jars/spymemcached-no-version.jar spymemcached-2.12.1/main.jar
+      - cp build/sources/spymemcached-no-version.jar spymemcached-2.12.1/sources.jar
+      - rm -rf apache-ant-1.10.14
+      - rm -rf build
