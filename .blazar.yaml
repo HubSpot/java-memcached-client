@@ -1,6 +1,9 @@
 buildpack:
   name: Blazar-Buildpack-Java-prebuilt
 
+env:
+  SET_VERSION_OVERRIDE: 1.0-$GIT_BRANCH-SNAPSHOT
+
 before:
   - description: "Installing ant"
     commands:
