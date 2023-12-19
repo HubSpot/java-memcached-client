@@ -5,12 +5,12 @@ buildDeps:
 steps:
   - description: "Installing ant"
     commands:
-      - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.12-bin.zip --output apache-ant-1.10.12-bin.zip
-      - unzip -qq apache-ant-1.10.12-bin.zip
+      - curl https://dlcdn.apache.org/ant/binaries/apache-ant-1.10.14-bin.zip --output apache-ant-1.10.14-bin.zip
+      - unzip -qq apache-ant-1.10.14-bin.zip
 
   - description: "Running ant build"
     commands:
-      - apache-ant-1.10.12/bin/ant
+      - apache-ant-1.10.14/bin/ant
 
   - description: "Changing POM version"
     commands:
