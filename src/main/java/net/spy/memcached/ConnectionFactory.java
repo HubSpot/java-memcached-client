@@ -29,8 +29,10 @@ import java.net.SocketAddress;
 import java.nio.channels.SocketChannel;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
+import javax.net.ssl.SSLContext;
 
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.metrics.MetricCollector;
@@ -202,4 +204,16 @@ public interface ConnectionFactory {
    * @return the time in milliseconds.
    */
   long getAuthWaitTime();
+
+  /**
+   * If the client connection should be made with SSL
+   * @return true if SSL is enabled
+   */
+  boolean getSslEnabled();
+
+  /**
+   * The SSLContext to perform the handshake with. If sslEnabled is true, this may not be Optional.empty()
+   * @return The SSLContext
+   */
+  Optional<SSLContext> getSslContext();
 }

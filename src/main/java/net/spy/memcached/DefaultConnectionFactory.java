@@ -30,12 +30,11 @@ import java.nio.channels.SocketChannel;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -53,6 +52,8 @@ import net.spy.memcached.protocol.binary.BinaryMemcachedNodeImpl;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
 import net.spy.memcached.transcoders.SerializingTranscoder;
 import net.spy.memcached.transcoders.Transcoder;
+
+import javax.net.ssl.SSLContext;
 
 /**
  * Default implementation of ConnectionFactory.
@@ -423,6 +424,26 @@ public class DefaultConnectionFactory extends SpyObject implements
    */
   public AuthDescriptor getAuthDescriptor() {
     return null;
+  }
+
+  /*
+   * (non-Javadoc)
+   *
+   * @see net.spy.memcached.ConnectionFactory#getSslEnabled();
+   */
+  @Override
+  public boolean getSslEnabled() {
+    return false;
+  }
+
+  /*
+   * (non-Javadoc)
+   *
+   * @see net.spy.memcached.ConnectionFactory#getSslContext();
+   */
+  @Override
+  public Optional<SSLContext> getSslContext() {
+    return Optional.empty();
   }
 
   /*
