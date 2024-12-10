@@ -31,6 +31,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -47,6 +48,9 @@ import net.spy.memcached.compat.SpyObject;
 import net.spy.memcached.ops.Operation;
 import net.spy.memcached.ops.OperationState;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
+import net.spy.memcached.tls.TLSConnectionManager;
+
+import javax.net.ssl.SSLContext;
 
 /**
  * Represents a node with the memcached cluster, along with buffering and
@@ -84,6 +88,10 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private int continuousTimeout = 0;
   private long continuousTimeoutStart = 0;
 
+  private final boolean sslEnabled;
+  private final Optional<SSLContext> sslContext;
+  private final TLSConnectionManager tlsConnectionManager;
+
   public TCPMemcachedNodeImpl(SocketAddress sa, SocketChannel c, int bufSize,
                               BlockingQueue<Operation> rq, BlockingQueue<Operation> wq,
                               BlockingQueue<Operation> iq, long opQueueMaxBlockTime,
@@ -98,6 +106,13 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     socketAddress = sa;
     connectionFactory = fact;
     this.authWaitTime = authWaitTime;
+    this.sslEnabled = fact.getSslEnabled();
+    this.sslContext = fact.getSslContext();
+    if (sslEnabled && sslContext.isEmpty()) {
+      throw new IllegalStateException("SSL Context was empty, but SSL was enabled");
+    }
+    this.tlsConnectionManager = sslEnabled ? new TLSConnectionManager(sslContext.get()) : null;
+
     setChannel(c);
     // Since these buffers are allocated rarely (only on client creation
     // or reconfigure), and are passed to Channel.read() and Channel.write(),
@@ -729,6 +744,15 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     } else {
       authLatch = new CountDownLatch(0);
     }
+  }
+
+  private boolean executeTlsHandshake() {
+      try {
+        return tlsConnectionManager.doHandshake(channel);
+      } catch (IOException e) {
+        getLogger().error("SSL Handshake Failed", e);
+        return false;
+      }
   }
 
   /**
