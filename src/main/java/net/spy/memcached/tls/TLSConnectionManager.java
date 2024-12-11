@@ -1,5 +1,8 @@
 package net.spy.memcached.tls;
 
+import net.spy.memcached.compat.log.Logger;
+import net.spy.memcached.compat.log.LoggerFactory;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -19,7 +22,8 @@ import java.util.concurrent.Future;
 
 public class TLSConnectionManager implements Closeable {
 
-    private final SSLContext sslContext;
+    private static final Logger LOG = LoggerFactory.getLogger(TLSConnectionManager.class);
+
     private final SSLEngine sslEngine;
 
     private SSLSession currentSession;
@@ -32,7 +36,6 @@ public class TLSConnectionManager implements Closeable {
     ExecutorService executor = Executors.newSingleThreadExecutor();
 
     public TLSConnectionManager(SSLContext sslContext) {
-        this.sslContext = sslContext;
         this.sslEngine = sslContext.createSSLEngine();
 
         configureSslEngine();
@@ -52,7 +55,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
-
+        LOG.info("{} - Beginning handshake.", socketChannel.getRemoteAddress());
         try {
             sslEngine.beginHandshake();
             currentSession = sslEngine.getHandshakeSession();

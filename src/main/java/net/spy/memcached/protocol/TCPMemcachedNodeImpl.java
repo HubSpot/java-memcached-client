@@ -746,7 +746,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     }
   }
 
-  private boolean executeTlsHandshake() {
+  @Override
+  public boolean executeTlsHandshake() {
       try {
         return tlsConnectionManager.doHandshake(channel);
       } catch (IOException e) {

@@ -254,4 +254,11 @@ public interface MemcachedNode {
 	 * waiting to be picked up by the event loop.
 	 */
 	int pendingOperationQueueSize();
+
+	/**
+	 * Performs a TLS Handshake with the SSLContext provided by the connection factory
+	 * @return true if the handshake was a success, false otherwise
+	 */
+	public boolean executeTlsHandshake();
+
 }
