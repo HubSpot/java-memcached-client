@@ -187,6 +187,11 @@ public class MemcachedNodeROImpl implements MemcachedNode {
     return root.pendingOperationQueueSize();
   }
 
+  @Override
+  public boolean executeTlsHandshake() {
+    return root.executeTlsHandshake();
+  }
+
   public boolean isAuthenticated() {
     throw new UnsupportedOperationException();
   }

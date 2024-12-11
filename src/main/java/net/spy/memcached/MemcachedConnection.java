@@ -247,6 +247,8 @@ public class MemcachedConnection extends SpyThread {
    */
   private final int wakeupDelay;
 
+  private final boolean sslEnabled;
+
   /**
    * Construct a {@link MemcachedConnection}.
    *
@@ -276,6 +278,7 @@ public class MemcachedConnection extends SpyThread {
     listenerExecutorService = f.getListenerExecutorService();
     this.bufSize = bufSize;
     this.connectionFactory = f;
+    this.sslEnabled = f.getSslEnabled();
 
     String verifyAlive = System.getProperty("net.spy.verifyAliveOnConnect");
     if(verifyAlive != null && verifyAlive.equals("true")) {
@@ -742,6 +745,14 @@ public class MemcachedConnection extends SpyThread {
    */
   private void finishConnect(final SelectionKey sk, final MemcachedNode node)
       throws IOException {
+
+    if (sslEnabled) {
+      boolean handshakeResult = node.executeTlsHandshake();
+      if (!handshakeResult) {
+        throw new IOException("TLS Handshake Failed on " + node.getSocketAddress());
+      }
+    }
+
     if (verifyAliveOnConnect) {
       final CountDownLatch latch = new CountDownLatch(1);
       final OperationFuture<Boolean> rv = new OperationFuture<Boolean>("noop",
