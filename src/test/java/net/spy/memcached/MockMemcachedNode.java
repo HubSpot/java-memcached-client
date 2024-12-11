@@ -228,4 +228,9 @@ public class MockMemcachedNode implements MemcachedNode {
 	public int pendingOperationQueueSize() {
 		return 0;
 	}
+
+	@Override
+	public boolean executeTlsHandshake() {
+		return true;
+	}
 }
