@@ -65,7 +65,7 @@ public class TLSConnectionManager implements Closeable {
             while (!Thread.currentThread().isInterrupted()
                     && handshakeStatus != HandshakeStatus.FINISHED
                     && handshakeStatus != HandshakeStatus.NOT_HANDSHAKING) {
-                LOG.debug("{} - Handshake status: {}", socketChannel.getRemoteAddress(), handshakeStatus.name());
+                LOG.info("{} - Handshake status: {}", socketChannel.getRemoteAddress(), handshakeStatus.name());
                 switch (handshakeStatus) {
                     case NEED_TASK:
                         // we need to finish these tasks for the handshake to continue
