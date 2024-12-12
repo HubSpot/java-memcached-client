@@ -58,7 +58,7 @@ public class TLSConnectionManager implements Closeable {
         LOG.info("{} - Beginning handshake.", socketChannel.getRemoteAddress());
         try {
             sslEngine.beginHandshake();
-            currentSession = sslEngine.getHandshakeSession();
+            currentSession = sslEngine.getSession();
             initBuffers(currentSession);
 
             HandshakeStatus handshakeStatus = sslEngine.getHandshakeStatus();
