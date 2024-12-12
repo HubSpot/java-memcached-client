@@ -107,7 +107,7 @@ public class TLSConnectionManager implements Closeable {
                         ByteBuffer bufferContent = networkOutBuffer.duplicate();
                         ArrayList<Byte> bytes = new ArrayList<>();
                         for(int i = 0; i < bufferContent.remaining(); i++) {
-                            bufferContent.put(bufferContent.get());
+                            bytes.add(bufferContent.get());
                         }
                         SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
                         networkOutBuffer.compact(); // Leaves any unread bytes while creating more room in the buffer
