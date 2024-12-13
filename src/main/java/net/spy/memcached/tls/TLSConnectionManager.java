@@ -55,7 +55,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
-        LOG.info("{} - Beginning handshake.", socketChannel.getRemoteAddress());
+        LOG.info("%s - Beginning handshake.", socketChannel.getRemoteAddress());
         try {
             sslEngine.beginHandshake();
             currentSession = sslEngine.getSession();
@@ -65,7 +65,7 @@ public class TLSConnectionManager implements Closeable {
             while (!Thread.currentThread().isInterrupted()
                     && handshakeStatus != HandshakeStatus.FINISHED
                     && handshakeStatus != HandshakeStatus.NOT_HANDSHAKING) {
-                LOG.info("{} - Handshake status: {}", socketChannel.getRemoteAddress(), handshakeStatus.name());
+                LOG.info("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
                 switch (handshakeStatus) {
                     case NEED_TASK:
                         // we need to finish these tasks for the handshake to continue
