@@ -103,14 +103,9 @@ public class TLSConnectionManager implements Closeable {
                             sslEngine.closeOutbound();
                             break;
                         }
-                        networkOutBuffer.flip();
-                        ByteBuffer bufferContent = networkOutBuffer.duplicate();
-                        ArrayList<Byte> bytes = new ArrayList<>();
-                        for(int i = 0; i < bufferContent.remaining(); i++) {
-                            bytes.add(bufferContent.get());
-                        }
+                        networkInBuffer.flip();
                         SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
-                        networkOutBuffer.compact(); // Leaves any unread bytes while creating more room in the buffer
+                        networkInBuffer.compact(); // Leaves any unread bytes while creating more room in the buffer
                         if (unwrapResult.getStatus() == SSLEngineResult.Status.CLOSED) {
                             return false; // Server closed session before handshake completed
                         }
