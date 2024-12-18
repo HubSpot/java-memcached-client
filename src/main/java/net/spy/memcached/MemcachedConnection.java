@@ -42,8 +42,10 @@ import net.spy.memcached.ops.VBucketAware;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
 import net.spy.memcached.protocol.binary.MultiGetOperationImpl;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
+import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
 import net.spy.memcached.util.StringUtils;
 
+import javax.net.ssl.SSLEngineResult;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
@@ -842,7 +844,11 @@ public class MemcachedConnection extends SpyThread {
       currentOp = handleReadsWhenChannelEndOfStream(currentOp, node, rbuf);
     }
 
-    while (read > 0) {
+    while (
+            read > 0
+            || (sslEnabled && rbuf.position() > 0)  // If the encrypted data exceeds the size of the read buffer, we'll
+                                                    // need to continue to read until we've decrypted the entire response
+    ) {
       getLogger().debug("Read %d bytes", read);
       rbuf.flip();
       while (rbuf.remaining() > 0) {
@@ -855,13 +861,30 @@ public class MemcachedConnection extends SpyThread {
         metrics.forNode(node).updateHistogram(OVERALL_AVG_TIME_ON_WIRE_METRIC,
             (int)(timeOnWire / 1000));
         metrics.forNode(node).markMeter(OVERALL_RESPONSE_METRIC);
-        synchronized(currentOp) {
-          readBufferAndLogMetrics(currentOp, rbuf, node);
+        if (sslEnabled) {
+          UnwrapResult unwrapResult = node.unwrapReadBuffer(rbuf);
+          if (unwrapResult.getResult().getStatus() == SSLEngineResult.Status.BUFFER_UNDERFLOW) {
+            // We need to continue reading data from the wire
+            break;
+          }
+          // We've finished decrypting the entire response at this point
+          synchronized (currentOp) {
+            readBufferAndLogMetrics(currentOp, unwrapResult.getDataBuffer(), node);
+          }
+          currentOp = node.getCurrentReadOp();
+          break; // Since we're compacting rbuf, we need to escape this while
+        } else {
+          synchronized (currentOp) {
+            readBufferAndLogMetrics(currentOp, rbuf, node);
+          }
+          currentOp = node.getCurrentReadOp();
         }
-
-        currentOp = node.getCurrentReadOp();
       }
-      rbuf.clear();
+      if (sslEnabled) {
+        rbuf.compact(); // There's still more data to be read, so we compact the buffer and continue reading
+      } else {
+        rbuf.clear();
+      }
       read = channel.read(rbuf);
       node.completedRead();
     }

@@ -25,6 +25,10 @@ public class TLSConnectionManager implements Closeable {
     private final SSLContext sslContext;
     private SSLEngine sslEngine;
 
+    public static final int WRAP_STATUS_BUFFER_UNDERFLOW = -1;
+    public static final int WRAP_STATUS_BUFFER_OVERFLOW = -2;
+
+
     private SSLSession currentSession;
 
     private ByteBuffer appOutBuffer; // Holds the data we are preparing to send out
@@ -50,10 +54,10 @@ public class TLSConnectionManager implements Closeable {
 
     private void initBuffers(SSLSession session) {
         // allocateDirect() to keep all bytes contiguous in memory
-        appOutBuffer = ByteBuffer.allocateDirect(session.getApplicationBufferSize());
-        appInBuffer = ByteBuffer.allocateDirect(session.getApplicationBufferSize());
-        networkOutBuffer = ByteBuffer.allocateDirect(session.getPacketBufferSize());
-        networkInBuffer = ByteBuffer.allocateDirect(session.getPacketBufferSize());
+        appOutBuffer = allocateAppBuffer();
+        appInBuffer = allocateAppBuffer();
+        networkOutBuffer = allocateNetworkBuffer();
+        networkInBuffer = allocateNetworkBuffer();
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
@@ -150,6 +154,60 @@ public class TLSConnectionManager implements Closeable {
         return true;
     }
 
+    /**
+     * Uses the keys stored in the SSLEngine to encrypt byts to send to the server
+     * @param appOutBuffer The buffer containing the unencrypted data to send. Should be at least sslEngine.getApplicationBufferSize() in length.
+     * @param networkOutBuffer The buffer to write to, should be at least sslEngine.getPacketBuffer() in length
+     * @return If the wrap succeeds, the number of bytes produced by the wrap.
+     *         If a Buffer Overflow happened, TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW
+     *         If a Buffer Underflow happened, TLSConnectionManager.WRAP_STATUS_BUFFER_UNDERFLOW
+     * @throws SSLException from the call to SSLEngine::wrap if any occurred
+     */
+    public int wrapBufferForSend(ByteBuffer appOutBuffer, ByteBuffer networkOutBuffer) throws SSLException {
+        SSLEngineResult wrap = sslEngine.wrap(appOutBuffer, networkOutBuffer);
+        switch (wrap.getStatus()) {
+            case BUFFER_UNDERFLOW:
+                return WRAP_STATUS_BUFFER_UNDERFLOW;
+            case BUFFER_OVERFLOW:
+                return WRAP_STATUS_BUFFER_OVERFLOW;
+            case OK:
+                return wrap.bytesProduced();
+            case CLOSED:
+                throw new RuntimeException(sslEngine.getPeerHost() + " - TLS Connection is closed");
+            default:
+                // This might get hit if the Status enum ever gets expanded, but for now, we should not hit this. Case
+                // required to make the Java compiler happy.
+                throw new IllegalStateException("Invalid SSL status: " + wrap.getStatus());
+        }
+    }
+
+    public UnwrapResult unwrapReceivedBuffer (ByteBuffer networkInBuffer) throws IOException {
+        appInBuffer.clear();
+        while(!Thread.currentThread().isInterrupted()) {
+        SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
+            switch (unwrapResult.getStatus()) {
+                case BUFFER_OVERFLOW:
+                    // Application buffer is too small, set it to the correct size
+                    enlargeBuffer(appInBuffer, sslEngine.getSession().getApplicationBufferSize());
+                    break;
+                case BUFFER_UNDERFLOW:
+                    // We aren't done reading the response yet
+                    return new UnwrapResult(null, unwrapResult);
+                case OK:
+                    appInBuffer.flip();
+                    return new UnwrapResult(appInBuffer, unwrapResult);
+                case CLOSED:
+                    this.close();
+                    throw new IOException(sslEngine.getPeerHost() + " - TLS Connection is closed");
+                default:
+                    // This might get hit if the Status enum ever gets expanded, but for now, we should not hit this. Case
+                    // required to make the Java compiler happy.
+                    throw new IllegalStateException("Invalid SSL status: " + unwrapResult.getStatus());
+            }
+        }
+        throw new RuntimeException(sslEngine.getPeerHost() + " - Interrupted while unwrapping read buffer");
+    }
+
     @Override
     public void close() throws IOException {
         closeSslEngine();
@@ -208,12 +266,30 @@ public class TLSConnectionManager implements Closeable {
         }
     }
 
+    public ByteBuffer allocateAppBuffer() {
+        return allocateAppBuffer(0);
+    }
+
+    public ByteBuffer allocateAppBuffer(int suggestedSize) {
+        int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
+        return ByteBuffer.allocateDirect(requiredSize);
+    }
+
+    public ByteBuffer allocateNetworkBuffer() {
+        return ByteBuffer.allocateDirect(0);
+    }
+
+    public ByteBuffer allocateNetworkBuffer(int suggestedSize) {
+        int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
+        return ByteBuffer.allocateDirect(requiredSize);
+    }
+
     private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
         if (suggestedCapacity > buffer.capacity()) {
-            return ByteBuffer.allocate(suggestedCapacity);
+            return ByteBuffer.allocateDirect(suggestedCapacity);
         } else {
             // If the suggested capacity is still too small, double the size
-            return ByteBuffer.allocate(buffer.capacity() * 2);
+            return ByteBuffer.allocateDirect(buffer.capacity() * 2);
         }
     }
 
@@ -226,6 +302,24 @@ public class TLSConnectionManager implements Closeable {
             } catch (IOException e) {
                 throw new SSLException("Failed to write wrapped buffer.", e);
             }
+        }
+    }
+    
+    public static class UnwrapResult {
+        private final ByteBuffer dataBuffer;
+        private final SSLEngineResult result;
+
+        private UnwrapResult(ByteBuffer dataBuffer, SSLEngineResult result) {
+            this.dataBuffer = dataBuffer;
+            this.result = result;
+        }
+
+        public ByteBuffer getDataBuffer() {
+            return dataBuffer;
+        }
+
+        public SSLEngineResult getResult() {
+            return result;
         }
     }
 }

@@ -49,8 +49,10 @@ import net.spy.memcached.ops.Operation;
 import net.spy.memcached.ops.OperationState;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
 import net.spy.memcached.tls.TLSConnectionManager;
+import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 
 /**
  * Represents a node with the memcached cluster, along with buffering and
@@ -118,8 +120,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     // or reconfigure), and are passed to Channel.read() and Channel.write(),
     // use direct buffers to avoid
     //   http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6214569
-    rbuf = ByteBuffer.allocateDirect(bufSize);
-    wbuf = ByteBuffer.allocateDirect(bufSize);
+    rbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
+    wbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
     getWbuf().clear();
     readQ = rq;
     writeQ = wq;
@@ -267,12 +269,28 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       getWbuf().clear();
       Operation o=getNextWritableOp();
 
-      while(o != null && toWrite < getWbuf().capacity()) {
+      boolean tlsError = false;
+      while(o != null && toWrite < getWbuf().capacity() && !tlsError) {
         synchronized(o) {
           assert o.getState() == OperationState.WRITING;
 
           ByteBuffer obuf = o.getBuffer();
           assert obuf != null : "Didn't get a write buffer from " + o;
+          if (sslEnabled) {
+              try {
+                int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
+                if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
+                  tlsError = true;
+                  // Todo: Should we resize the network buffer here and retry the operation? Should the operation error out?
+                  getLogger().error("Buffer overflow wrapping operation for TLS. Operation: {}", o);
+                } else {
+                  toWrite += wrapResult;
+                }
+              } catch (SSLException e) {
+                  tlsError = true;
+                  getLogger().error("Failed to wrap operation for TLS. Operation: {}", o, e);
+              }
+          }
           int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
           byte[] b = new byte[bytesToCopy];
           obuf.get(b);
@@ -754,6 +772,11 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
         getLogger().error("SSL Handshake Failed", e);
         return false;
       }
+  }
+
+  @Override
+  public UnwrapResult unwrapReadBuffer(ByteBuffer networkInBuffer) throws IOException {
+    return tlsConnectionManager.unwrapReceivedBuffer(networkInBuffer);
   }
 
   /**
