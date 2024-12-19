@@ -99,8 +99,8 @@ public class TLSConnectionManager implements Closeable {
                                 return false;
                             }
                             // We're done with the handshake, signal that we aren't going to be sending or receiving any more data
-                            sslEngine.closeOutbound();
                             sslEngine.closeInbound();
+                            sslEngine.closeOutbound();
                             break;
                         }
                         networkInBuffer.flip();
