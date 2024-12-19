@@ -24,7 +24,8 @@ public class TLSConnectionManager implements Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(TLSConnectionManager.class);
 
-    private final SSLEngine sslEngine;
+    private final SSLContext sslContext;
+    private SSLEngine sslEngine;
 
     private SSLSession currentSession;
 
@@ -36,13 +37,18 @@ public class TLSConnectionManager implements Closeable {
     ExecutorService executor = Executors.newSingleThreadExecutor();
 
     public TLSConnectionManager(SSLContext sslContext) {
-        this.sslEngine = sslContext.createSSLEngine();
-
-        configureSslEngine();
+        this.sslContext = sslContext;
     }
 
-    private void configureSslEngine() {
+    private void initSSLEngine() {
         // We are the client, not the server
+        if (sslEngine != null) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Resetting SSL Engine");
+            }
+            closeSslEngine();
+        }
+        sslEngine = sslContext.createSSLEngine();
         sslEngine.setUseClientMode(true);
     }
 
@@ -55,17 +61,24 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
-        LOG.debug("%s - Beginning handshake.", socketChannel.getRemoteAddress());
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("%s - Beginning handshake.", socketChannel.getRemoteAddress());
+        }
+
         try {
+            initSSLEngine();
             sslEngine.beginHandshake();
             currentSession = sslEngine.getSession();
             initBuffers(currentSession);
 
             HandshakeStatus handshakeStatus = sslEngine.getHandshakeStatus();
+            if (LOG.isDebugEnabled()) {
+                LOG.info("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
+            }
             while (!Thread.currentThread().isInterrupted()
                     && handshakeStatus != HandshakeStatus.FINISHED
                     && handshakeStatus != HandshakeStatus.NOT_HANDSHAKING) {
-                LOG.debug("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
+
                 switch (handshakeStatus) {
                     case NEED_TASK:
                         // we need to finish these tasks for the handshake to continue
@@ -99,7 +112,14 @@ public class TLSConnectionManager implements Closeable {
                                 return false;
                             }
                             // We're done with the handshake, signal that we aren't going to be sending or receiving any more data
-                            sslEngine.closeInbound();
+                            try {
+                                sslEngine.closeInbound();
+                            } catch (SSLException e) {
+                                if (LOG.isDebugEnabled()) {
+                                    // This doesn't seem to be critical, but it could be nice to know about
+                                    LOG.warn("{} - tried to close inbound traffic but has not received a TLS close notification yet due to end of stream.", socketChannel.getRemoteAddress(), e);
+                                }
+                            }
                             sslEngine.closeOutbound();
                             break;
                         }
@@ -118,6 +138,9 @@ public class TLSConnectionManager implements Closeable {
                 }
 
                 handshakeStatus = sslEngine.getHandshakeStatus();
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
+                }
             }
 
             // If we were interrupted, get out
@@ -130,14 +153,29 @@ public class TLSConnectionManager implements Closeable {
         } catch (SSLException | InterruptedException e) {
             throw new RuntimeException("Caught exception during SSL Handshake", e);
         }
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("%s - Handshake complete.", socketChannel.getRemoteAddress());
+        }
         return true;
     }
 
     @Override
     public void close() throws IOException {
+        closeSslEngine();
+    }
+
+    private void closeSslEngine() {
         sslEngine.setEnableSessionCreation(false);
         sslEngine.closeOutbound();
-        sslEngine.closeInbound();
+        try {
+            sslEngine.closeInbound();
+        } catch (SSLException e) {
+            if (LOG.isDebugEnabled()) {
+                // This doesn't seem to be critical, but it could be nice to know about
+                LOG.warn("Tried to close inbound traffic but has not received a TLS close notification yet due to end of stream.", e);
+            }
+        }
+        sslEngine = null;
     }
 
     private void handleHandshakeWrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
@@ -189,7 +227,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {
-        networkOutBuffer.flip(); // Change from read to write
+        networkOutBuffer.flip(); // Change from reading to writing
         // Send data over the wire
         while(networkOutBuffer.hasRemaining()) {
             try {
@@ -198,14 +236,5 @@ public class TLSConnectionManager implements Closeable {
                 throw new SSLException("Failed to write wrapped buffer.", e);
             }
         }
-    }
-
-    public static ArrayList<Byte> extractByteBuffer(ByteBuffer buffer) {
-        ByteBuffer duplicate = buffer.duplicate();
-        ArrayList<Byte> bytes = new ArrayList<>();
-        for(int i = 0; i < duplicate.remaining(); i++) {
-            bytes.add(duplicate.get());
-        }
-        return bytes;
     }
 }
