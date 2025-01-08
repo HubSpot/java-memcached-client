@@ -24,7 +24,8 @@ public class TLSConnectionManager implements Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(TLSConnectionManager.class);
 
-    private final SSLEngine sslEngine;
+    private final SSLContext sslContext;
+    private SSLEngine sslEngine;
 
     private SSLSession currentSession;
 
@@ -36,13 +37,15 @@ public class TLSConnectionManager implements Closeable {
     ExecutorService executor = Executors.newSingleThreadExecutor();
 
     public TLSConnectionManager(SSLContext sslContext) {
-        this.sslEngine = sslContext.createSSLEngine();
-
-        configureSslEngine();
+        this.sslContext = sslContext;
     }
 
-    private void configureSslEngine() {
+    private void initSSLEngine() {
         // We are the client, not the server
+        if (sslEngine != null) {
+            closeSslEngine();
+        }
+        sslEngine = sslContext.createSSLEngine();
         sslEngine.setUseClientMode(true);
     }
 
@@ -59,6 +62,7 @@ public class TLSConnectionManager implements Closeable {
             LOG.debug("%s - Beginning handshake.", socketChannel.getRemoteAddress());
         }
         try {
+            initSSLEngine();
             sslEngine.beginHandshake();
             currentSession = sslEngine.getSession();
             initBuffers(currentSession);
@@ -143,9 +147,18 @@ public class TLSConnectionManager implements Closeable {
 
     @Override
     public void close() throws IOException {
+        closeSslEngine();
+    }
+
+    private void closeSslEngine() {
         sslEngine.setEnableSessionCreation(false);
         sslEngine.closeOutbound();
-        sslEngine.closeInbound();
+        try {
+            sslEngine.closeInbound();
+        } catch (SSLException e) {
+            throw new RuntimeException(e);
+        }
+        sslEngine = null;
     }
 
     private void handleHandshakeWrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
@@ -197,7 +210,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {
-        networkOutBuffer.flip(); // Change from read to write
+        networkOutBuffer.flip(); // Change from reading to writing
         // Send data over the wire
         while(networkOutBuffer.hasRemaining()) {
             try {
