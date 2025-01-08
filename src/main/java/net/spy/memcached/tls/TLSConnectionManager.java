@@ -55,7 +55,9 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
-        LOG.debug("%s - Beginning handshake.", socketChannel.getRemoteAddress());
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("%s - Beginning handshake.", socketChannel.getRemoteAddress());
+        }
         try {
             sslEngine.beginHandshake();
             currentSession = sslEngine.getSession();
@@ -65,7 +67,9 @@ public class TLSConnectionManager implements Closeable {
             while (!Thread.currentThread().isInterrupted()
                     && handshakeStatus != HandshakeStatus.FINISHED
                     && handshakeStatus != HandshakeStatus.NOT_HANDSHAKING) {
-                LOG.debug("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
+                }
                 switch (handshakeStatus) {
                     case NEED_TASK:
                         // we need to finish these tasks for the handshake to continue
@@ -204,9 +208,10 @@ public class TLSConnectionManager implements Closeable {
         }
     }
 
+    //used while at a debugging breakpoint to inspect byte buffer content
     public static ArrayList<Byte> extractByteBuffer(ByteBuffer buffer) {
         ByteBuffer duplicate = buffer.duplicate();
-        ArrayList<Byte> bytes = new ArrayList<>();
+        ArrayList<Byte> bytes = new ArrayList<>(duplicate.remaining());
         for(int i = 0; i < duplicate.remaining(); i++) {
             bytes.add(duplicate.get());
         }
