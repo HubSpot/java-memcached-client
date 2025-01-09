@@ -141,6 +141,7 @@ public class TLSConnectionManager implements Closeable {
         } catch (SSLException | InterruptedException e) {
             throw new RuntimeException("Caught exception during SSL Handshake", e);
         }
+        LOG.info("%s - Handshake complete.", socketChannel.getRemoteAddress());
         return true;
     }
 
