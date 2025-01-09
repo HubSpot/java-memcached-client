@@ -43,6 +43,7 @@ public class TLSConnectionManager implements Closeable {
     private void initSSLEngine() {
         // We are the client, not the server
         if (sslEngine != null) {
+            LOG.info("Resetting SSL Engine");
             closeSslEngine();
         }
         sslEngine = sslContext.createSSLEngine();
