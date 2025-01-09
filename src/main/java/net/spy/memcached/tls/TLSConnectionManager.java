@@ -237,14 +237,4 @@ public class TLSConnectionManager implements Closeable {
             }
         }
     }
-
-    //used while at a debugging breakpoint to inspect byte buffer content
-    public static ArrayList<Byte> extractByteBuffer(ByteBuffer buffer) {
-        ByteBuffer duplicate = buffer.duplicate();
-        ArrayList<Byte> bytes = new ArrayList<>(duplicate.remaining());
-        for(int i = 0; i < duplicate.remaining(); i++) {
-            bytes.add(duplicate.get());
-        }
-        return bytes;
-    }
 }
