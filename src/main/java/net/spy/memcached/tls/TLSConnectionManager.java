@@ -170,7 +170,10 @@ public class TLSConnectionManager implements Closeable {
         try {
             sslEngine.closeInbound();
         } catch (SSLException e) {
-            throw new RuntimeException(e);
+            if (LOG.isDebugEnabled()) {
+                // This doesn't seem to be critical, but it could be nice to know about
+                LOG.warn("{} - tried to close inbound traffic but has not received a TLS close notification yet due to end of stream.", socketChannel.getRemoteAddress(), e);
+            }
         }
         sslEngine = null;
     }
