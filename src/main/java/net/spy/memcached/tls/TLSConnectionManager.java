@@ -68,11 +68,10 @@ public class TLSConnectionManager implements Closeable {
             initBuffers(currentSession);
 
             HandshakeStatus handshakeStatus = sslEngine.getHandshakeStatus();
+            LOG.info("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
             while (!Thread.currentThread().isInterrupted()
                     && handshakeStatus != HandshakeStatus.FINISHED
                     && handshakeStatus != HandshakeStatus.NOT_HANDSHAKING) {
-
-                LOG.info("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
 
                 switch (handshakeStatus) {
                     case NEED_TASK:
@@ -107,12 +106,12 @@ public class TLSConnectionManager implements Closeable {
                                 return false;
                             }
                             // We're done with the handshake, signal that we aren't going to be sending or receiving any more data
-//                            try {
-//                                sslEngine.closeInbound();
-//                            } catch (SSLException e) {
-//                                LOG.warn("{} - tried to close inbound traffic but has not received a TLS close notification yet due to end of stream.", socketChannel.getRemoteAddress(), e);
-//                            }
-//                            sslEngine.closeOutbound();
+                            try {
+                                sslEngine.closeInbound();
+                            } catch (SSLException e) {
+                                LOG.warn("{} - tried to close inbound traffic but has not received a TLS close notification yet due to end of stream.", socketChannel.getRemoteAddress(), e);
+                            }
+                            sslEngine.closeOutbound();
                             break;
                         }
                         networkInBuffer.flip();
@@ -130,6 +129,7 @@ public class TLSConnectionManager implements Closeable {
                 }
 
                 handshakeStatus = sslEngine.getHandshakeStatus();
+                LOG.info("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
             }
 
             // If we were interrupted, get out
