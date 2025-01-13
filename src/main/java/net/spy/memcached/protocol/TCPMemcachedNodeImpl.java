@@ -36,8 +36,12 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.net.ssl.HandshakeCompletedEvent;
+import javax.net.ssl.HandshakeCompletedListener;
+import javax.net.ssl.SSLSocket;
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -748,12 +752,40 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
 
   @Override
   public boolean executeTlsHandshake() {
-      try {
-        return tlsConnectionManager.doHandshake(channel);
-      } catch (IOException e) {
-        getLogger().error("SSL Handshake Failed", e);
-        return false;
+    if (!sslEnabled) {
+      throw new IllegalStateException("SSL is not enabled");
+    }
+    try {
+      SSLSocket socket = (SSLSocket) channel.socket();
+      if (getLogger().isDebugEnabled()) {
+        getLogger().debug("%s - Beginning handshake.", socket.getRemoteSocketAddress());
       }
+      AtomicBoolean handshakeCompleted = new AtomicBoolean(false);
+      HandshakeCompletedListener handshakeCompletedListener = new HandshakeCompletedListener() {
+        @Override
+        public void handshakeCompleted(HandshakeCompletedEvent event) {
+          if (getLogger().isDebugEnabled()) {
+            getLogger().debug("%s - Handshake completed.", socket.getRemoteSocketAddress());
+          }
+          handshakeCompleted.set(true);
+        }
+      };
+      socket.addHandshakeCompletedListener(handshakeCompletedListener);
+      long start = System.currentTimeMillis();
+      socket.startHandshake();
+      while (!Thread.currentThread().isInterrupted() && !handshakeCompleted.get()) {
+        if (getLogger().isDebugEnabled()) {
+          getLogger().debug("%s - Handshake in progress.", socket.getRemoteSocketAddress());
+        }
+      }
+      long elapsed = System.currentTimeMillis() - start;
+
+      getLogger().info("Finished handshake in {}ms", elapsed);
+      return true;
+    } catch (IOException e) {
+      getLogger().error("SSL Handshake Failed", e);
+      return false;
+    }
   }
 
   /**

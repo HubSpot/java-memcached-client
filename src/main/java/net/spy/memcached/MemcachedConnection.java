@@ -42,6 +42,7 @@ import net.spy.memcached.ops.VBucketAware;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
 import net.spy.memcached.protocol.binary.MultiGetOperationImpl;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
+import net.spy.memcached.tls.TLSConnectionManager;
 import net.spy.memcached.util.StringUtils;
 
 import java.io.IOException;
@@ -249,6 +250,8 @@ public class MemcachedConnection extends SpyThread {
 
   private final boolean sslEnabled;
 
+  private final TLSConnectionManager tlsConnectionManager;
+
   /**
    * Construct a {@link MemcachedConnection}.
    *
@@ -279,6 +282,10 @@ public class MemcachedConnection extends SpyThread {
     this.bufSize = bufSize;
     this.connectionFactory = f;
     this.sslEnabled = f.getSslEnabled();
+    if (f.getSslContext().isEmpty() && sslEnabled) {
+      throw new IllegalArgumentException("SSL is configured to be enabled, but no SSL Context is set. Check connection factory.");
+    }
+    this.tlsConnectionManager = sslEnabled ? new TLSConnectionManager(f.getSslContext().get()) : null;
 
     String verifyAlive = System.getProperty("net.spy.verifyAliveOnConnect");
     if(verifyAlive != null && verifyAlive.equals("true")) {
@@ -343,6 +350,9 @@ public class MemcachedConnection extends SpyThread {
 
     for (SocketAddress sa : addrs) {
       SocketChannel ch = SocketChannel.open();
+      if (connectionFactory.getSslEnabled()) {
+        ch = tlsConnectionManager.createSslChannel(ch);
+      }
       ch.configureBlocking(false);
       MemcachedNode qa = connectionFactory.createMemcachedNode(sa, ch, bufSize);
       qa.setConnection(this);
