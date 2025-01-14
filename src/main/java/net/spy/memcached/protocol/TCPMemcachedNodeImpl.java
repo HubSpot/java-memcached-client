@@ -94,6 +94,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private final boolean sslEnabled;
   private final Optional<SSLContext> sslContext;
   private final TLSConnectionManager tlsConnectionManager;
+  private SSLSocket sslSocket = null;
 
   public TCPMemcachedNodeImpl(SocketAddress sa, SocketChannel c, int bufSize,
                               BlockingQueue<Operation> rq, BlockingQueue<Operation> wq,
@@ -749,21 +750,23 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     }
   }
 
+  private SSLSocket getSslSocket() {
+    if (sslSocket == null) {
+      if (!sslEnabled) {
+        throw new IllegalStateException("SSL is not enabled");
+      }
+      try {
+        sslSocket = tlsConnectionManager.createSslChannel(channel);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  }
+
   @Override
   public boolean executeTlsHandshake() {
-    if (!sslEnabled) {
-      throw new IllegalStateException("SSL is not enabled");
-    }
-    if (!(channel.socket() instanceof SSLSocket)) {
-        try {
-            setChannel(tlsConnectionManager.createSslChannel(channel));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     try {
-      SSLSocket socket = (SSLSocket) channel.socket();
+      SSLSocket socket = getSslSocket();
       if (getLogger().isDebugEnabled()) {
         getLogger().debug("%s - Beginning handshake.", socket.getRemoteSocketAddress());
       }
