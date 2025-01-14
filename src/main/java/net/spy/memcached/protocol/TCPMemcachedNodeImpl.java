@@ -761,6 +761,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
         throw new RuntimeException(e);
       }
     }
+    
+    return sslSocket;
   }
 
   @Override
