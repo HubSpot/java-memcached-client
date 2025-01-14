@@ -360,9 +360,6 @@ public class MemcachedConnection extends SpyThread {
         if (ch.connect(sa)) {
           getLogger().info("Connected to %s immediately", qa);
           connected(qa);
-          if (connectionFactory.getSslEnabled()) {
-            ch = tlsConnectionManager.createSslChannel(ch);
-          }
         } else {
           getLogger().info("Added %s to connect queue", qa);
           ops = SelectionKey.OP_CONNECT;

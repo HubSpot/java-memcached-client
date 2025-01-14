@@ -25,6 +25,7 @@ public class TLSConnectionManager implements Closeable {
      */
     public SocketChannel createSslChannel(SocketChannel socketChannel) throws IOException {
         SSLSocket socket = (SSLSocket) sslContext.getSocketFactory().createSocket(socketChannel.socket(), null, socketChannel.socket().getPort(), false);
+        socket.addHandshakeCompletedListener(event -> LOG.info("Handshake completed."));
         return socket.getChannel();
     }
 

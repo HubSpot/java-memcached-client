@@ -39,7 +39,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.net.ssl.HandshakeCompletedEvent;
 import javax.net.ssl.HandshakeCompletedListener;
 import javax.net.ssl.SSLSocket;
 import net.jodah.failsafe.CircuitBreaker;
@@ -755,21 +754,21 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     if (!sslEnabled) {
       throw new IllegalStateException("SSL is not enabled");
     }
+    if (!(channel.socket() instanceof SSLSocket)) {
+        try {
+            setChannel(tlsConnectionManager.createSslChannel(channel));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     try {
       SSLSocket socket = (SSLSocket) channel.socket();
       if (getLogger().isDebugEnabled()) {
         getLogger().debug("%s - Beginning handshake.", socket.getRemoteSocketAddress());
       }
       AtomicBoolean handshakeCompleted = new AtomicBoolean(false);
-      HandshakeCompletedListener handshakeCompletedListener = new HandshakeCompletedListener() {
-        @Override
-        public void handshakeCompleted(HandshakeCompletedEvent event) {
-          if (getLogger().isDebugEnabled()) {
-            getLogger().debug("%s - Handshake completed.", socket.getRemoteSocketAddress());
-          }
-          handshakeCompleted.set(true);
-        }
-      };
+      HandshakeCompletedListener handshakeCompletedListener = event -> handshakeCompleted.set(true);
       socket.addHandshakeCompletedListener(handshakeCompletedListener);
       long start = System.currentTimeMillis();
       socket.startHandshake();
