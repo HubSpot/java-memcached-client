@@ -1,8 +1,5 @@
 package net.spy.memcached.tls;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-import javax.net.ssl.HandshakeCompletedEvent;
-import javax.net.ssl.HandshakeCompletedListener;
 import javax.net.ssl.SSLSocket;
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
