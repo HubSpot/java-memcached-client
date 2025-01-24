@@ -746,13 +746,6 @@ public class MemcachedConnection extends SpyThread {
   private void finishConnect(final SelectionKey sk, final MemcachedNode node)
       throws IOException {
 
-    if (sslEnabled) {
-      boolean handshakeResult = node.executeTlsHandshake();
-      if (!handshakeResult) {
-        throw new IOException("TLS Handshake Failed on " + node.getSocketAddress());
-      }
-    }
-
     if (verifyAliveOnConnect) {
       final CountDownLatch latch = new CountDownLatch(1);
       final OperationFuture<Boolean> rv = new OperationFuture<Boolean>("noop",
@@ -1520,6 +1513,10 @@ public class MemcachedConnection extends SpyThread {
    */
   public void retryOperation(Operation op) {
     retryOps.add(op);
+  }
+
+  public boolean isTlsConnection() {
+    return sslEnabled;
   }
 
 }

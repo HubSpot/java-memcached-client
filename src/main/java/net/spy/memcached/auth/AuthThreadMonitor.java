@@ -29,6 +29,7 @@ import net.spy.memcached.MemcachedConnection;
 import net.spy.memcached.MemcachedNode;
 import net.spy.memcached.OperationFactory;
 import net.spy.memcached.compat.SpyObject;
+import net.spy.memcached.compat.SpyThread;
 
 /**
  * This will ensure no more than one AuthThread will exist for a given
@@ -36,10 +37,10 @@ import net.spy.memcached.compat.SpyObject;
  */
 public class AuthThreadMonitor extends SpyObject {
 
-  private final Map<Object, AuthThread> nodeMap;
+  private final Map<Object, SpyThread> nodeMap;
 
   public AuthThreadMonitor() {
-    nodeMap = new HashMap<Object, AuthThread>();
+    nodeMap = new HashMap<>();
   }
 
   /**
@@ -58,7 +59,8 @@ public class AuthThreadMonitor extends SpyObject {
       OperationFactory opFact, AuthDescriptor authDescriptor,
       MemcachedNode node) {
     interruptOldAuth(node);
-    AuthThread newSASLAuthenticator =
+
+    SpyThread newSASLAuthenticator = conn.isTlsConnection() ? new TlsAuthThread(conn, authDescriptor, node) :
         new AuthThread(conn, opFact, authDescriptor, node);
     nodeMap.put(node, newSASLAuthenticator);
   }
@@ -71,7 +73,7 @@ public class AuthThreadMonitor extends SpyObject {
    * otherwise it will wait infinitely).
    */
   public synchronized void interruptAllPendingAuth(){
-    for (AuthThread toStop : nodeMap.values()) {
+    for (SpyThread toStop : nodeMap.values()) {
       if (toStop.isAlive()) {
         getLogger().warn("Connection shutdown in progress - interrupting "
           + "waiting authentication thread.");
@@ -81,7 +83,7 @@ public class AuthThreadMonitor extends SpyObject {
   }
 
   private void interruptOldAuth(MemcachedNode nodeToStop) {
-    AuthThread toStop = nodeMap.get(nodeToStop);
+    SpyThread toStop = nodeMap.get(nodeToStop);
     if (toStop != null) {
       if (toStop.isAlive()) {
         getLogger().warn(
@@ -99,7 +101,7 @@ public class AuthThreadMonitor extends SpyObject {
    * from anywhere else.
    * @return
    */
-  protected Map<Object, AuthThread> getNodeMap() {
+  protected Map<Object, SpyThread> getNodeMap() {
     return nodeMap;
   }
 }
