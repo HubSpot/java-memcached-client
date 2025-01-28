@@ -95,6 +95,7 @@ public class TLSConnectionManager implements Closeable {
                         handleHandshakeWrapResult(socketChannel, wrapResult);
                         break;
                     case NEED_UNWRAP:
+                        networkInBuffer.clear();
                         // We need to receive a message from the server, but it needs to be unwrapped first
                         if (socketChannel.read(networkInBuffer) < 0) {
                             // The message was empty
