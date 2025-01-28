@@ -16,8 +16,6 @@ import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class TLSConnectionManager implements Closeable {
@@ -33,8 +31,6 @@ public class TLSConnectionManager implements Closeable {
     private ByteBuffer appInBuffer; // Holds the data we have received and unwrapped
     private ByteBuffer networkOutBuffer; // Holds the data we are sending across the wire
     private ByteBuffer networkInBuffer; // Holds the data we have received from the wire
-
-    ExecutorService executor = Executors.newSingleThreadExecutor();
 
     public TLSConnectionManager(SSLContext sslContext) {
         this.sslContext = sslContext;
@@ -82,19 +78,14 @@ public class TLSConnectionManager implements Closeable {
                 switch (handshakeStatus) {
                     case NEED_TASK:
                         // we need to finish these tasks for the handshake to continue
-                        List<Future<?>> tasks = new ArrayList<>();
+                        List<Runnable> tasks = new ArrayList<>();
                         Runnable currentTask = sslEngine.getDelegatedTask();
                         while(currentTask != null) {
-                            tasks.add(executor.submit(currentTask));
+                            tasks.add(currentTask);
                             currentTask = sslEngine.getDelegatedTask();
                         }
-                        for (Future<?> task : tasks) {
-                            try {
-                                task.get();
-                            } catch (ExecutionException e) {
-                                // TODO make this more clear
-                                throw new RuntimeException(e);
-                            }
+                        for (Runnable task : tasks) {
+                            task.run();
                         }
                         break;
                     case NEED_WRAP:
