@@ -69,7 +69,7 @@ public class TLSConnectionManager implements Closeable {
 
             HandshakeStatus handshakeStatus = sslEngine.getHandshakeStatus();
             if (LOG.isDebugEnabled()) {
-                LOG.info("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
+                LOG.debug("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
             }
             while (!Thread.currentThread().isInterrupted()
                     && handshakeStatus != HandshakeStatus.FINISHED
