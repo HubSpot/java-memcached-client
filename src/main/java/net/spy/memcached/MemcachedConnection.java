@@ -352,7 +352,6 @@ public class MemcachedConnection extends SpyThread {
       try {
         if (ch.connect(sa)) {
           getLogger().info("Connected to %s immediately", qa);
-          getLogger().info("Notifying node connected after creation");
           connected(qa);
         } else {
           getLogger().info("Added %s to connect queue", qa);
@@ -798,7 +797,6 @@ public class MemcachedConnection extends SpyThread {
       }
     }
 
-    getLogger().info("Notifying node connected from finishConnect()");
     connected(node);
     addedQueue.offer(node);
     if (node.getWbuf().hasRemaining()) {
@@ -1140,7 +1138,6 @@ public class MemcachedConnection extends SpyThread {
           ch.socket().setTcpNoDelay(!connectionFactory.useNagleAlgorithm());
           int ops = 0;
           if (ch.connect(node.getSocketAddress())) {
-            getLogger().info("Notifying node connected after reconnect.");
             connected(node);
             addedQueue.offer(node);
             getLogger().info("Immediately reconnected to %s", node);
