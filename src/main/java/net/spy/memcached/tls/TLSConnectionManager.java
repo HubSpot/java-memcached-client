@@ -15,8 +15,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 
 public class TLSConnectionManager implements Closeable {
 
@@ -40,20 +38,27 @@ public class TLSConnectionManager implements Closeable {
         this.sslContext = sslContext;
     }
 
-    private void initSSLEngine() {
+    private void initSslEngine() {
+        ensureSslEngineInitialized(true);
+    }
+
+    private void ensureSslEngineInitialized(boolean forceReset) {
         // We are the client, not the server
         if (sslEngine != null) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Resetting SSL Engine");
+            if (forceReset) {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Resetting SSL Engine");
+                }
+                closeSslEngine();
+            } else {
+                return;
             }
-            closeSslEngine();
         }
         sslEngine = sslContext.createSSLEngine();
         sslEngine.setUseClientMode(true);
     }
 
     private void initBuffers(SSLSession session) {
-        // allocateDirect() to keep all bytes contiguous in memory
         appOutBuffer = allocateAppBuffer();
         appInBuffer = allocateAppBuffer();
         networkOutBuffer = allocateNetworkBuffer();
@@ -66,7 +71,7 @@ public class TLSConnectionManager implements Closeable {
         }
 
         try {
-            initSSLEngine();
+            initSslEngine();
             sslEngine.beginHandshake();
             currentSession = sslEngine.getSession();
             initBuffers(currentSession);
@@ -271,7 +276,9 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public ByteBuffer allocateAppBuffer(int suggestedSize) {
+        ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
+        // allocateDirect() to keep all bytes contiguous in memory
         return ByteBuffer.allocateDirect(requiredSize);
     }
 
@@ -280,7 +287,9 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public ByteBuffer allocateNetworkBuffer(int suggestedSize) {
+        ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
+        // allocateDirect() to keep all bytes contiguous in memory
         return ByteBuffer.allocateDirect(requiredSize);
     }
 
