@@ -753,7 +753,7 @@ public class MemcachedConnection extends SpyThread {
       if (!handshakeResult) {
         throw new IOException("TLS Handshake Failed on " + node.getSocketAddress());
       }
-      getLogger().info("{} - Handshake Completed", node.getSocketAddress());
+      getLogger().info("%s - Handshake Completed", node.getSocketAddress());
     }
 
     if (verifyAliveOnConnect) {

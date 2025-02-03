@@ -282,13 +282,13 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
                 if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
                   tlsError = true;
                   // Todo: Should we resize the network buffer here and retry the operation? Should the operation error out?
-                  getLogger().error("Buffer overflow wrapping operation for TLS. Operation: {}", o);
+                  getLogger().error("Buffer overflow wrapping operation for TLS. Operation: %s", o);
                 } else {
                   toWrite += wrapResult;
                 }
               } catch (SSLException e) {
                   tlsError = true;
-                  getLogger().error("Failed to wrap operation for TLS. Operation: {}", o, e);
+                  getLogger().error("Failed to wrap operation for TLS. Operation: %s", o, e);
               }
           }
           int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
