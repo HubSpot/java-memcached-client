@@ -97,7 +97,7 @@ public class TLSConnectionManager implements Closeable {
                     case NEED_UNWRAP:
                         // We need to receive a message from the server, but it needs to be unwrapped first
                         if (socketChannel.read(networkInBuffer) < 0) {
-                            // The message was empty
+                            // The message hit end of stream
                             if (sslEngine.isInboundDone() && sslEngine.isOutboundDone()) {
                                 // SSL Engine closed before handshake could complete
                                 return false;
@@ -116,7 +116,11 @@ public class TLSConnectionManager implements Closeable {
                         }
                         networkInBuffer.flip();
                         SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
-                        networkInBuffer.compact(); // Leaves any unread bytes while creating more room in the buffer
+                        if (!networkInBuffer.hasRemaining()) {
+                            networkInBuffer.clear();
+                        } else {
+                            networkInBuffer.compact(); // Leaves any unread bytes while creating more room in the buffer
+                        }
                         if (unwrapResult.getStatus() == SSLEngineResult.Status.CLOSED) {
                             return false; // Server closed session before handshake completed
                         }
