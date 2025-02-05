@@ -31,6 +31,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 
 import net.spy.memcached.auth.AuthDescriptor;
+import net.spy.memcached.compat.log.Logger;
+import net.spy.memcached.compat.log.LoggerFactory;
 import net.spy.memcached.metrics.MetricCollector;
 import net.spy.memcached.metrics.MetricType;
 import net.spy.memcached.ops.Operation;
@@ -46,6 +48,7 @@ import javax.net.ssl.SSLContext;
  */
 public class ConnectionFactoryBuilder {
 
+  protected static final Logger LOG = LoggerFactory.getLogger(ConnectionFactoryBuilder.class);
   protected OperationQueueFactory opQueueFactory;
   protected OperationQueueFactory readQueueFactory;
   protected OperationQueueFactory writeQueueFactory;
@@ -571,10 +574,13 @@ public class ConnectionFactoryBuilder {
    * Ensures that the settings are compatible with each other
    */
   private void checkPreconditions() {
-    if (sslEnabled && sslContext.isEmpty()) {
-      throw new IllegalArgumentException(
-        "SSL is enabled but SSLContext is empty. Please call .setSslContext() before building."
-      );
+    if (sslEnabled) {
+      LOG.error("Memcached ConnectionFactory configured with SSL Enabled, but SSL support is not ready.");
+      if (sslContext.isEmpty()) {
+        throw new IllegalArgumentException(
+                "SSL is enabled but SSLContext is empty. Please call .setSslContext() before building."
+        );
+      }
     }
   }
 }
