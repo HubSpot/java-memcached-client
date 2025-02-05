@@ -26,10 +26,13 @@ package net.spy.memcached;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 
 import net.spy.memcached.auth.AuthDescriptor;
+import net.spy.memcached.compat.log.Logger;
+import net.spy.memcached.compat.log.LoggerFactory;
 import net.spy.memcached.metrics.MetricCollector;
 import net.spy.memcached.metrics.MetricType;
 import net.spy.memcached.ops.Operation;
@@ -38,11 +41,14 @@ import net.spy.memcached.protocol.ascii.AsciiOperationFactory;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
 import net.spy.memcached.transcoders.Transcoder;
 
+import javax.net.ssl.SSLContext;
+
 /**
  * Builder for more easily configuring a ConnectionFactory.
  */
 public class ConnectionFactoryBuilder {
 
+  protected static final Logger LOG = LoggerFactory.getLogger(ConnectionFactoryBuilder.class);
   protected OperationQueueFactory opQueueFactory;
   protected OperationQueueFactory readQueueFactory;
   protected OperationQueueFactory writeQueueFactory;
@@ -82,6 +88,8 @@ public class ConnectionFactoryBuilder {
   protected MetricCollector collector = null;
   protected ExecutorService executorService = null;
   protected long authWaitTime = DefaultConnectionFactory.DEFAULT_AUTH_WAIT_TIME;
+  protected boolean sslEnabled = false;
+  protected Optional<SSLContext> sslContext = Optional.empty();
 
   /**
    * Set the operation queue factory.
@@ -109,6 +117,8 @@ public class ConnectionFactoryBuilder {
     setEnableMetrics(cf.enableMetrics());
     setListenerExecutorService(cf.getListenerExecutorService());
     setAuthWaitTime(cf.getAuthWaitTime());
+    setSslEnabled(cf.getSslEnabled());
+    setSslContext(cf.getSslContext());
   }
 
   public ConnectionFactoryBuilder setOpQueueFactory(OperationQueueFactory q) {
@@ -344,9 +354,37 @@ public class ConnectionFactoryBuilder {
   }
 
   /**
+   * Enable SSL for the client
+   * @param sslEnabled true if the client should use SSL
+   */
+  public ConnectionFactoryBuilder setSslEnabled(boolean sslEnabled) {
+    this.sslEnabled = sslEnabled;
+    return this;
+  }
+
+  /**
+   * Set the desired SSL Context for SSL connections. Ignored if sslEnabled is false
+   * @param sslContext The desired SSL Context
+   */
+  public ConnectionFactoryBuilder setSslContext(SSLContext sslContext) {
+    return this.setSslContext(Optional.ofNullable(sslContext));
+  }
+
+  /**
+   * Set the desired SSL Context for SSL connections. Ignored if sslEnabled is false
+   * @param sslContext The desired SSL Context
+   */
+  public ConnectionFactoryBuilder setSslContext(Optional<SSLContext> sslContext) {
+    this.sslContext = sslContext;
+    return this;
+  }
+
+  /**
    * Get the ConnectionFactory set up with the provided parameters.
    */
   public ConnectionFactory build() {
+    checkPreconditions();
+
     return new DefaultConnectionFactory() {
 
       @Override
@@ -483,6 +521,16 @@ public class ConnectionFactoryBuilder {
       public long getAuthWaitTime() {
         return authWaitTime;
       }
+
+      @Override
+      public boolean getSslEnabled() {
+        return sslEnabled;
+      }
+
+      @Override
+      public Optional<SSLContext> getSslContext() {
+        return sslContext;
+      }
     };
 
   }
@@ -520,5 +568,19 @@ public class ConnectionFactoryBuilder {
      * VBucket support.
      */
     VBUCKET
+  }
+
+  /**
+   * Ensures that the settings are compatible with each other
+   */
+  private void checkPreconditions() {
+    if (sslEnabled) {
+      LOG.error("Memcached ConnectionFactory configured with SSL Enabled, but SSL support is not ready.");
+      if (sslContext.isEmpty()) {
+        throw new IllegalArgumentException(
+                "SSL is enabled but SSLContext is empty. Please call .setSslContext() before building."
+        );
+      }
+    }
   }
 }
