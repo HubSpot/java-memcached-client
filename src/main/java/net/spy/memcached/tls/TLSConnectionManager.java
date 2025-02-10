@@ -160,7 +160,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     /**
-     * Uses the keys stored in the SSLEngine to encrypt byts to send to the server
+     * Uses the keys stored in the SSLEngine to encrypt bytes to send to the server
      * @param appOutBuffer The buffer containing the unencrypted data to send. Should be at least sslEngine.getApplicationBufferSize() in length.
      * @param networkOutBuffer The buffer to write to, should be at least sslEngine.getPacketBuffer() in length
      * @return If the wrap succeeds, the number of bytes produced by the wrap.
@@ -189,7 +189,7 @@ public class TLSConnectionManager implements Closeable {
     public UnwrapResult unwrapReceivedBuffer (ByteBuffer networkInBuffer) throws IOException {
         appInBuffer.clear();
         while(!Thread.currentThread().isInterrupted()) {
-        SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
+            SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
             switch (unwrapResult.getStatus()) {
                 case BUFFER_OVERFLOW:
                     // Application buffer is too small, set it to the correct size
