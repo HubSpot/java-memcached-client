@@ -281,7 +281,6 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
                 int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
                 if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
                   tlsError = true;
-                  // Todo: Should we resize the network buffer here and retry the operation? Should the operation error out?
                   getLogger().error("Buffer overflow wrapping operation for TLS. Operation: %s", o);
                 } else {
                   toWrite += wrapResult;
@@ -290,12 +289,14 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
                   tlsError = true;
                   getLogger().error("Failed to wrap operation for TLS. Operation: %s", o, e);
               }
+          } else {
+            int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
+            byte[] b = new byte[bytesToCopy];
+            obuf.get(b);
+            getWbuf().put(b);
+            getLogger().debug("After copying stuff from %s: %s", o, getWbuf());
+            toWrite += bytesToCopy;
           }
-          int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
-          byte[] b = new byte[bytesToCopy];
-          obuf.get(b);
-          getWbuf().put(b);
-          getLogger().debug("After copying stuff from %s: %s", o, getWbuf());
           if (!o.getBuffer().hasRemaining()) {
             o.writeComplete();
             transitionWriteItem();
@@ -307,7 +308,6 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
 
             o=getNextWritableOp();
           }
-          toWrite += bytesToCopy;
         }
       }
       getWbuf().flip();
