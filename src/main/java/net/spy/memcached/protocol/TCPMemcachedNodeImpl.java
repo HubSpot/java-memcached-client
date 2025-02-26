@@ -38,6 +38,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
+
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -47,12 +50,10 @@ import net.spy.memcached.MemcachedNode;
 import net.spy.memcached.compat.SpyObject;
 import net.spy.memcached.ops.Operation;
 import net.spy.memcached.ops.OperationState;
+import net.spy.memcached.ops.TLSWrappedOperation;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
 import net.spy.memcached.tls.TLSConnectionManager;
 import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLException;
 
 /**
  * Represents a node with the memcached cluster, along with buffering and
@@ -269,34 +270,27 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       getWbuf().clear();
       Operation o=getNextWritableOp();
 
-      boolean tlsError = false;
-      while(o != null && toWrite < getWbuf().capacity() && !tlsError) {
+      // There is a chance we get here and the buffer has not been wrapped for TLS yet. This can happen
+      // in the case where a node is reconnecting after the operation has been enqueued. In this case, we
+      // need to re-wrap the buffer with the new TLS context.
+      if (o instanceof TLSWrappedOperation && !((TLSWrappedOperation) o).requiresWrapping()) {
+        try {
+          ((TLSWrappedOperation) o).wrapBufferForTls(tlsConnectionManager);
+        } catch (SSLException e) {
+          throw new RuntimeException("Encountered SSLException wrapping operation for TLS", e);
+        }
+      }
+      while(o != null && toWrite < getWbuf().capacity()) {
         synchronized(o) {
           assert o.getState() == OperationState.WRITING;
 
           ByteBuffer obuf = o.getBuffer();
           assert obuf != null : "Didn't get a write buffer from " + o;
-          if (sslEnabled) {
-              try {
-                int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
-                if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
-                  tlsError = true;
-                  getLogger().error("Buffer overflow wrapping operation for TLS. Operation: %s", o);
-                } else {
-                  toWrite += wrapResult;
-                }
-              } catch (SSLException e) {
-                  tlsError = true;
-                  getLogger().error("Failed to wrap operation for TLS. Operation: %s", o, e);
-              }
-          } else {
-            int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
-            byte[] b = new byte[bytesToCopy];
-            obuf.get(b);
-            getWbuf().put(b);
-            getLogger().debug("After copying stuff from %s: %s", o, getWbuf());
-            toWrite += bytesToCopy;
-          }
+          int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
+          byte[] b = new byte[bytesToCopy];
+          obuf.get(b);
+          getWbuf().put(b);
+          getLogger().debug("After copying stuff from %s: %s", o, getWbuf());
           if (!o.getBuffer().hasRemaining()) {
             o.writeComplete();
             transitionWriteItem();
@@ -308,6 +302,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
 
             o=getNextWritableOp();
           }
+          toWrite += bytesToCopy;
         }
       }
       getWbuf().flip();
@@ -446,6 +441,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
         }
         return;
       }
+      if (op instanceof TLSWrappedOperation) {
+        ((TLSWrappedOperation) op).wrapBufferForTls(tlsConnectionManager);
+      }
       if (!inputQueue.offer(op, opQueueMaxBlockTime, TimeUnit.MILLISECONDS)) {
         throw new IllegalStateException("Timed out waiting to add " + op
             + "(max wait=" + opQueueMaxBlockTime + "ms)");
@@ -454,6 +452,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       // Restore the interrupted status
       Thread.currentThread().interrupt();
       throw new IllegalStateException("Interrupted while waiting to add " + op);
+    } catch (SSLException e) {
+      throw new RuntimeException("Encountered SSLException wrapping operation for TLS", e);
     }
   }
 
@@ -465,6 +465,14 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    */
   public final void insertOp(Operation op) {
     ArrayList<Operation> tmp = new ArrayList<Operation>(inputQueue.size() + 1);
+    // This should only ever be needed for the TestOperation that's used to verify that a connection works.
+    if (op instanceof TLSWrappedOperation) {
+      try {
+        ((TLSWrappedOperation) op).wrapBufferForTls(tlsConnectionManager);
+      } catch (SSLException e) {
+        throw new RuntimeException("Encountered SSLException while wrapping operation for insert", e);
+      }
+    }
     tmp.add(op);
     inputQueue.drainTo(tmp);
     inputQueue.addAll(tmp);
@@ -745,6 +753,11 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
 
   public final void authComplete() {
     if (reconnectBlocked != null && reconnectBlocked.size() > 0) {
+      for (Operation op : reconnectBlocked) {
+        if (op instanceof TLSWrappedOperation) {
+          ((TLSWrappedOperation) op).resetTlsConnection();
+        }
+      }
       inputQueue.addAll(reconnectBlocked);
     }
     authLatch.countDown();

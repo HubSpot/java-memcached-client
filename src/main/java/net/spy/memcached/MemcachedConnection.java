@@ -23,29 +23,6 @@
 
 package net.spy.memcached;
 
-import net.spy.memcached.compat.SpyThread;
-import net.spy.memcached.compat.log.Logger;
-import net.spy.memcached.compat.log.LoggerFactory;
-import net.spy.memcached.internal.OperationFuture;
-import net.spy.memcached.metrics.MetricCollector;
-import net.spy.memcached.metrics.MetricType;
-import net.spy.memcached.ops.GetOperation;
-import net.spy.memcached.ops.KeyedOperation;
-import net.spy.memcached.ops.NoopOperation;
-import net.spy.memcached.ops.Operation;
-import net.spy.memcached.ops.OperationCallback;
-import net.spy.memcached.ops.OperationException;
-import net.spy.memcached.ops.OperationState;
-import net.spy.memcached.ops.OperationStatus;
-import net.spy.memcached.ops.TapOperation;
-import net.spy.memcached.ops.VBucketAware;
-import net.spy.memcached.protocol.binary.BinaryOperationFactory;
-import net.spy.memcached.protocol.binary.MultiGetOperationImpl;
-import net.spy.memcached.protocol.binary.TapAckOperationImpl;
-import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
-import net.spy.memcached.util.StringUtils;
-
-import javax.net.ssl.SSLEngineResult;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
@@ -74,6 +51,31 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.SSLEngineResult;
+
+import net.spy.memcached.compat.SpyThread;
+import net.spy.memcached.compat.log.Logger;
+import net.spy.memcached.compat.log.LoggerFactory;
+import net.spy.memcached.internal.OperationFuture;
+import net.spy.memcached.metrics.MetricCollector;
+import net.spy.memcached.metrics.MetricType;
+import net.spy.memcached.ops.GetOperation;
+import net.spy.memcached.ops.KeyedOperation;
+import net.spy.memcached.ops.NoopOperation;
+import net.spy.memcached.ops.Operation;
+import net.spy.memcached.ops.OperationCallback;
+import net.spy.memcached.ops.OperationException;
+import net.spy.memcached.ops.OperationState;
+import net.spy.memcached.ops.OperationStatus;
+import net.spy.memcached.ops.TLSWrappedOperation;
+import net.spy.memcached.ops.TapOperation;
+import net.spy.memcached.ops.VBucketAware;
+import net.spy.memcached.protocol.binary.BinaryOperationFactory;
+import net.spy.memcached.protocol.binary.MultiGetOperationImpl;
+import net.spy.memcached.protocol.binary.TapAckOperationImpl;
+import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
+import net.spy.memcached.util.StringUtils;
 
 /**
  * Main class for handling connections to a memcached cluster.
@@ -1270,7 +1272,7 @@ public class MemcachedConnection extends SpyThread {
 
     assert o.isCancelled() || placeIn != null : "No node found for key " + key;
     if (placeIn != null) {
-      addOperation(placeIn, o);
+      addOperation(placeIn, maybeWrapOperationForTls(o));
     } else {
       assert o.isCancelled() : "No node found for " + key + " (and not "
           + "immediately cancelled)";
@@ -1286,7 +1288,7 @@ public class MemcachedConnection extends SpyThread {
   public void insertOperation(final MemcachedNode node, final Operation o) {
     o.setHandlingNode(node);
     o.initialize();
-    node.insertOp(o);
+    node.insertOp(maybeWrapOperationForTls(o));
     addedQueue.offer(node);
     metrics.forNode(node).markMeter(OVERALL_REQUEST_METRIC);
 
@@ -1324,7 +1326,7 @@ public class MemcachedConnection extends SpyThread {
    */
   public void addOperations(final Map<MemcachedNode, Operation> ops) {
     for (Map.Entry<MemcachedNode, Operation> me : ops.entrySet()) {
-      addOperation(me.getKey(), me.getValue());
+      addOperation(me.getKey(), maybeWrapOperationForTls(me.getValue()));
     }
   }
 
@@ -1352,7 +1354,7 @@ public class MemcachedConnection extends SpyThread {
       getLogger().debug("broadcast Operation: node = " + node);
       Operation op = of.newOp(node, latch);
       op.initialize();
-      node.addOp(op);
+      node.addOp(maybeWrapOperationForTls(op));
       op.setHandlingNode(node);
       addedQueue.offer(node);
       metrics.forNode(node).markMeter(OVERALL_REQUEST_METRIC);
@@ -1546,4 +1548,13 @@ public class MemcachedConnection extends SpyThread {
     retryOps.add(op);
   }
 
+  private Operation maybeWrapOperationForTls(Operation op) {
+    if (op instanceof TLSWrappedOperation) {
+      return op;
+    }
+    if (connectionFactory.getSslEnabled()) {
+      return new TLSWrappedOperation(op);
+    }
+    return op;
+  }
 }
