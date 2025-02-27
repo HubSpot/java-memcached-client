@@ -37,8 +37,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -426,7 +428,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    */
   public final void addOp(Operation op) {
     try {
-      if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS)) {
+      if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS) && awaitSslHandshakeMaybe()) {
         FailureMode mode = connectionFactory.getFailureMode();
         if (mode == FailureMode.Redistribute || mode == FailureMode.Retry) {
           getLogger().debug("Redistributing Operation " + op + " because auth "
@@ -544,6 +546,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    * @see net.spy.memcached.MemcachedNode#isAuthenticated()
    */
   public boolean isAuthenticated() {
+    if (sslEnabled) {
+      return tlsConnectionManager.wasHandshakeSuccessful();
+    }
     return (0 == authLatch.getCount());
   }
 
@@ -740,6 +745,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     }
   }
 
+  // Only called for SASL auth
   public final void authComplete() {
     if (reconnectBlocked != null && reconnectBlocked.size() > 0) {
       inputQueue.addAll(reconnectBlocked);
@@ -748,6 +754,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   public final void setupForAuth() {
+    if (sslEnabled) {
+      tlsConnectionManager.resetHandshakeStatus();
+    }
     if (shouldAuth) {
       authLatch = new CountDownLatch(1);
       if (inputQueue.size() > 0) {
@@ -769,6 +778,13 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
         getLogger().error("SSL Handshake Failed", e);
         return false;
       }
+  }
+
+  private boolean awaitSslHandshakeMaybe() throws InterruptedException {
+    if (sslEnabled) {
+      return tlsConnectionManager.awaitHandshake(authWaitTime);
+    }
+    return true;
   }
 
   @Override

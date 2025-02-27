@@ -1,7 +1,13 @@
 package net.spy.memcached.tls;
 
-import net.spy.memcached.compat.log.Logger;
-import net.spy.memcached.compat.log.LoggerFactory;
+import java.io.Closeable;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -9,12 +15,9 @@ import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
-import java.io.Closeable;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
-import java.util.List;
+
+import net.spy.memcached.compat.log.Logger;
+import net.spy.memcached.compat.log.LoggerFactory;
 
 public class TLSConnectionManager implements Closeable {
 
@@ -34,8 +37,11 @@ public class TLSConnectionManager implements Closeable {
     private ByteBuffer networkOutBuffer; // Holds the data we are sending across the wire
     private ByteBuffer networkInBuffer; // Holds the data we have received from the wire
 
+    private CountDownLatch handshakeSuccessful;
+
     public TLSConnectionManager(SSLContext sslContext) {
         this.sslContext = sslContext;
+        this.handshakeSuccessful = new CountDownLatch(1);
     }
 
     private void initSslEngine() {
@@ -156,6 +162,7 @@ public class TLSConnectionManager implements Closeable {
         if (LOG.isDebugEnabled()) {
             LOG.debug("%s - Handshake complete.", socketChannel.getRemoteAddress());
         }
+        handshakeSuccessful.countDown();
         return true;
     }
 
@@ -330,5 +337,17 @@ public class TLSConnectionManager implements Closeable {
         public SSLEngineResult getResult() {
             return result;
         }
+    }
+
+    public boolean wasHandshakeSuccessful() {
+        return handshakeSuccessful.getCount() == 0;
+    }
+
+    public boolean awaitHandshake(long msToWait) throws InterruptedException {
+       return handshakeSuccessful.await(msToWait, TimeUnit.MILLISECONDS);
+    }
+
+    public void resetHandshakeStatus() {
+        handshakeSuccessful = new CountDownLatch(1);
     }
 }
