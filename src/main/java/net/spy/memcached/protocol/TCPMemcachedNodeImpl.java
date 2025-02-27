@@ -38,6 +38,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
+
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -50,9 +53,6 @@ import net.spy.memcached.ops.OperationState;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
 import net.spy.memcached.tls.TLSConnectionManager;
 import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLException;
 
 /**
  * Represents a node with the memcached cluster, along with buffering and
@@ -84,6 +84,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private volatile long lastReadTimestamp = System.nanoTime();
   private MemcachedConnection connection;
   private final MiniCircuitBreaker circuitBreaker;
+  private final ByteBuffer sslBuffer; // Used for temporarily holding data during SSL operations
 
   // operation Future.{get,mutate} timeout counter
   private final Object timeoutLock = new Object();
@@ -122,6 +123,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     //   http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6214569
     rbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
     wbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
+    sslBuffer = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer() : null;
     getWbuf().clear();
     readQ = rq;
     writeQ = wq;
@@ -269,6 +271,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       getWbuf().clear();
       Operation o=getNextWritableOp();
 
+
       boolean tlsError = false;
       while(o != null && toWrite < getWbuf().capacity() && !tlsError) {
         synchronized(o) {
@@ -278,11 +281,13 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
           assert obuf != null : "Didn't get a write buffer from " + o;
           if (sslEnabled) {
               try {
-                int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
+                int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, sslBuffer);
                 if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
                   tlsError = true;
                   getLogger().error("Buffer overflow wrapping operation for TLS. Operation: %s", o);
                 } else {
+                  getWbuf().put(sslBuffer.array(), 0, wrapResult);
+                  sslBuffer.clear();
                   toWrite += wrapResult;
                 }
               } catch (SSLException e) {
