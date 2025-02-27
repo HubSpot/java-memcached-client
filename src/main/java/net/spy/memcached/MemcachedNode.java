@@ -31,6 +31,7 @@ import java.nio.channels.SocketChannel;
 import java.util.Collection;
 
 import net.spy.memcached.ops.Operation;
+import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
 
 /**
  * Interface defining a connection to a memcached server.
@@ -260,5 +261,13 @@ public interface MemcachedNode {
 	 * @return true if the handshake was a success, false otherwise
 	 */
 	public boolean executeTlsHandshake();
+
+	/**
+	 * Takes a buffer read from the server and unwraps it with the current SSL Context
+	 * @param networkInBuffer The byte buffer of bytes being read
+	 * @return A result with the decrypted bytes and the resulting SSLEngineResult
+	 * @throws IOException if the buffer is null, the buffer is readonly, SSL hasn't been configured, or the connection has closed
+	 */
+	UnwrapResult unwrapReadBuffer(ByteBuffer networkInBuffer) throws IOException;
 
 }
