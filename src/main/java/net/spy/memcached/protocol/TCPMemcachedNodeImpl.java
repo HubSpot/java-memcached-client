@@ -279,7 +279,6 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
                 int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
                 if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
                   tlsError = true;
-                  getLogger().warn("Buffer overflow wrapping operation for TLS. Operation: %s", o);
                 } else {
                   toWrite += wrapResult;
                 }
