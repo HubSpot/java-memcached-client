@@ -37,7 +37,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -50,9 +51,6 @@ import net.spy.memcached.ops.OperationState;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
 import net.spy.memcached.tls.TLSConnectionManager;
 import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLException;
 
 /**
  * Represents a node with the memcached cluster, along with buffering and
@@ -281,7 +279,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
                 int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
                 if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
                   tlsError = true;
-                  getLogger().error("Buffer overflow wrapping operation for TLS. Operation: %s", o);
+                  getLogger().warn("Buffer overflow wrapping operation for TLS. Operation: %s", o);
                 } else {
                   toWrite += wrapResult;
                 }
