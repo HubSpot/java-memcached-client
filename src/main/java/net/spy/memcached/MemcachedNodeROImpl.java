@@ -31,6 +31,7 @@ import java.nio.channels.SocketChannel;
 import java.util.Collection;
 
 import net.spy.memcached.ops.Operation;
+import net.spy.memcached.tls.TLSConnectionManager;
 
 public class MemcachedNodeROImpl implements MemcachedNode {
 
@@ -185,6 +186,16 @@ public class MemcachedNodeROImpl implements MemcachedNode {
   @Override
   public int pendingOperationQueueSize() {
     return root.pendingOperationQueueSize();
+  }
+
+  @Override
+  public boolean executeTlsHandshake() {
+    return root.executeTlsHandshake();
+  }
+
+  @Override
+  public TLSConnectionManager.UnwrapResult unwrapReadBuffer(ByteBuffer networkInBuffer) throws IOException {
+    return root.unwrapReadBuffer(networkInBuffer);
   }
 
   public boolean isAuthenticated() {

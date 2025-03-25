@@ -31,11 +31,15 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
@@ -47,6 +51,8 @@ import net.spy.memcached.compat.SpyObject;
 import net.spy.memcached.ops.Operation;
 import net.spy.memcached.ops.OperationState;
 import net.spy.memcached.protocol.binary.TapAckOperationImpl;
+import net.spy.memcached.tls.TLSConnectionManager;
+import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
 
 /**
  * Represents a node with the memcached cluster, along with buffering and
@@ -84,6 +90,10 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private int continuousTimeout = 0;
   private long continuousTimeoutStart = 0;
 
+  private final boolean sslEnabled;
+  private final Optional<SSLContext> sslContext;
+  private final TLSConnectionManager tlsConnectionManager;
+
   public TCPMemcachedNodeImpl(SocketAddress sa, SocketChannel c, int bufSize,
                               BlockingQueue<Operation> rq, BlockingQueue<Operation> wq,
                               BlockingQueue<Operation> iq, long opQueueMaxBlockTime,
@@ -98,13 +108,20 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     socketAddress = sa;
     connectionFactory = fact;
     this.authWaitTime = authWaitTime;
+    this.sslEnabled = fact.getSslEnabled();
+    this.sslContext = fact.getSslContext();
+    if (sslEnabled && sslContext.isEmpty()) {
+      throw new IllegalStateException("SSL Context was empty, but SSL was enabled");
+    }
+    this.tlsConnectionManager = sslEnabled ? new TLSConnectionManager(sslContext.get()) : null;
+
     setChannel(c);
     // Since these buffers are allocated rarely (only on client creation
     // or reconfigure), and are passed to Channel.read() and Channel.write(),
     // use direct buffers to avoid
     //   http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6214569
-    rbuf = ByteBuffer.allocateDirect(bufSize);
-    wbuf = ByteBuffer.allocateDirect(bufSize);
+    rbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
+    wbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
     getWbuf().clear();
     readQ = rq;
     writeQ = wq;
@@ -252,17 +269,33 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       getWbuf().clear();
       Operation o=getNextWritableOp();
 
-      while(o != null && toWrite < getWbuf().capacity()) {
+      boolean tlsError = false;
+      while(o != null && toWrite < getWbuf().capacity() && !tlsError) {
         synchronized(o) {
           assert o.getState() == OperationState.WRITING;
 
           ByteBuffer obuf = o.getBuffer();
           assert obuf != null : "Didn't get a write buffer from " + o;
-          int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
-          byte[] b = new byte[bytesToCopy];
-          obuf.get(b);
-          getWbuf().put(b);
-          getLogger().debug("After copying stuff from %s: %s", o, getWbuf());
+          if (sslEnabled) {
+              try {
+                int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
+                if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
+                  tlsError = true;
+                } else {
+                  toWrite += wrapResult;
+                }
+              } catch (SSLException e) {
+                  tlsError = true;
+                  getLogger().error("Failed to wrap operation for TLS. Operation: %s", o, e);
+              }
+          } else {
+            int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
+            byte[] b = new byte[bytesToCopy];
+            obuf.get(b);
+            getWbuf().put(b);
+            getLogger().debug("After copying stuff from %s: %s", o, getWbuf());
+            toWrite += bytesToCopy;
+          }
           if (!o.getBuffer().hasRemaining()) {
             o.writeComplete();
             transitionWriteItem();
@@ -274,7 +307,6 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
 
             o=getNextWritableOp();
           }
-          toWrite += bytesToCopy;
         }
       }
       getWbuf().flip();
@@ -396,7 +428,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    */
   public final void addOp(Operation op) {
     try {
-      if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS)) {
+      if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS) && awaitSslHandshakeMaybe()) {
         FailureMode mode = connectionFactory.getFailureMode();
         if (mode == FailureMode.Redistribute || mode == FailureMode.Retry) {
           getLogger().debug("Redistributing Operation " + op + " because auth "
@@ -514,6 +546,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    * @see net.spy.memcached.MemcachedNode#isAuthenticated()
    */
   public boolean isAuthenticated() {
+    if (sslEnabled) {
+      return tlsConnectionManager.wasHandshakeSuccessful();
+    }
     return (0 == authLatch.getCount());
   }
 
@@ -710,6 +745,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     }
   }
 
+  // Only called for SASL auth
   public final void authComplete() {
     if (reconnectBlocked != null && reconnectBlocked.size() > 0) {
       inputQueue.addAll(reconnectBlocked);
@@ -718,6 +754,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   public final void setupForAuth() {
+    if (sslEnabled) {
+      tlsConnectionManager.resetHandshakeStatus();
+    }
     if (shouldAuth) {
       authLatch = new CountDownLatch(1);
       if (inputQueue.size() > 0) {
@@ -729,6 +768,28 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     } else {
       authLatch = new CountDownLatch(0);
     }
+  }
+
+  @Override
+  public boolean executeTlsHandshake() {
+      try {
+        return tlsConnectionManager.doHandshake(channel);
+      } catch (IOException e) {
+        getLogger().error("SSL Handshake Failed", e);
+        return false;
+      }
+  }
+
+  private boolean awaitSslHandshakeMaybe() throws InterruptedException {
+    if (sslEnabled) {
+      return tlsConnectionManager.awaitHandshake(authWaitTime);
+    }
+    return true;
+  }
+
+  @Override
+  public UnwrapResult unwrapReadBuffer(ByteBuffer networkInBuffer) throws IOException {
+    return tlsConnectionManager.unwrapReceivedBuffer(networkInBuffer);
   }
 
   /**
