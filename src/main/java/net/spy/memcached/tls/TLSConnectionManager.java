@@ -224,9 +224,8 @@ public class TLSConnectionManager implements Closeable {
                     appInBuffer.flip();
                     return new UnwrapResult(appInBuffer, unwrapResult);
                 case CLOSED:
-                    String peerHost = sslEngine.getPeerHost();  // Capture host before closing
                     this.close();
-                    throw new IOException(peerHost + " - TLS Connection is closed");
+                    throw new IOException(sslEngine.getPeerHost() + " - TLS Connection is closed");
                 default:
                     // This might get hit if the Status enum ever gets expanded, but for now, we should not hit this. Case
                     // required to make the Java compiler happy.
