@@ -241,18 +241,22 @@ public class TLSConnectionManager implements Closeable {
         if(appOutBuffer != null) {
             totalCapacity += appOutBuffer.capacity();
             cleanupBuffer(appOutBuffer);
+            appOutBuffer = null;
         }
         if(appInBuffer != null) {
             totalCapacity += appInBuffer.capacity();
             cleanupBuffer(appInBuffer);
+            appInBuffer = null;
         }
         if(networkOutBuffer != null) {
             totalCapacity += networkOutBuffer.capacity();
             cleanupBuffer(networkOutBuffer);
+            networkOutBuffer = null;
         }
         if(networkInBuffer != null) {
             totalCapacity += networkInBuffer.capacity();
             cleanupBuffer(networkInBuffer);
+            networkInBuffer = null;
         }
         if (LOG.isDebugEnabled()) {
             LOG.debug("Finished clearing all direct buffers, total capacity freed: %s bytes", totalCapacity);
