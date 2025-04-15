@@ -216,7 +216,7 @@ public class TLSConnectionManager implements Closeable {
         throw new RuntimeException(sslEngine.getPeerHost() + " - Interrupted while unwrapping read buffer");
     }
 
-    private void cleanupBuffer(ByteBuffer buffer) {
+    private static void cleanupBuffer(ByteBuffer buffer) {
         if (buffer == null || !buffer.isDirect()) return;
         try {
             Method cleanerMethod = buffer.getClass().getMethod("cleaner");
@@ -339,12 +339,16 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
+        ByteBuffer oldBuffer = buffer;
+        ByteBuffer newBuffer;
         if (suggestedCapacity > buffer.capacity()) {
-            return ByteBuffer.allocateDirect(suggestedCapacity);
+            newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
         } else {
             // If the suggested capacity is still too small, double the size
-            return ByteBuffer.allocateDirect(buffer.capacity() * 2);
+            newBuffer = ByteBuffer.allocateDirect(buffer.capacity() * 2);
         }
+        cleanupBuffer(oldBuffer);
+        return newBuffer;
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {

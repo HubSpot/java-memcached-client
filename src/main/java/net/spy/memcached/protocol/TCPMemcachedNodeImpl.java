@@ -24,6 +24,7 @@
 package net.spy.memcached.protocol;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
@@ -59,7 +60,7 @@ import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
  * operation queues.
  */
 public abstract class TCPMemcachedNodeImpl extends SpyObject implements
-    MemcachedNode {
+    MemcachedNode, AutoCloseable {
 
   private static final TimeoutException TIMEOUT_EXCEPTION = new TimeoutException("Memcached operation timed out");
 
@@ -828,5 +829,29 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     public void run() throws Exception {
       getLogger().warn(message);
     }
+  }
+
+  private static void cleanupBuffer(ByteBuffer buffer) {
+    if (buffer == null || !buffer.isDirect()) return;
+    try {
+      Method cleanerMethod = buffer.getClass().getMethod("cleaner");
+      cleanerMethod.setAccessible(true);
+      Object cleaner = cleanerMethod.invoke(buffer);
+      if (cleaner != null) {
+        cleaner.getClass().getMethod("clean").invoke(cleaner);
+      }
+    } catch (Exception e) {
+      // Use logger if available, otherwise ignore
+    }
+  }
+
+  @Override
+  public void close() {
+    cleanupBuffers();
+  }
+
+  private void cleanupBuffers() {
+    cleanupBuffer(rbuf);
+    cleanupBuffer(wbuf);
   }
 }
