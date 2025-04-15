@@ -1,23 +1,19 @@
 package net.spy.memcached.tls;
 
+import net.spy.memcached.compat.log.Logger;
+import net.spy.memcached.compat.log.LoggerFactory;
+
+import javax.net.ssl.*;
+import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLEngineResult;
-import javax.net.ssl.SSLEngineResult.HandshakeStatus;
-import javax.net.ssl.SSLException;
-import javax.net.ssl.SSLSession;
-
-import net.spy.memcached.compat.log.Logger;
-import net.spy.memcached.compat.log.LoggerFactory;
 
 public class TLSConnectionManager implements Closeable {
 
@@ -220,9 +216,47 @@ public class TLSConnectionManager implements Closeable {
         throw new RuntimeException(sslEngine.getPeerHost() + " - Interrupted while unwrapping read buffer");
     }
 
+    private void cleanupBuffer(ByteBuffer buffer) {
+        if (buffer == null || !buffer.isDirect()) return;
+        try {
+            Method cleanerMethod = buffer.getClass().getMethod("cleaner");
+            cleanerMethod.setAccessible(true);
+            Object cleaner = cleanerMethod.invoke(buffer);
+            if (cleaner != null) {
+                cleaner.getClass().getMethod("clean").invoke(cleaner);
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to clean up buffer: " + e.getMessage(), e);
+        }
+    }
+
     @Override
     public void close() throws IOException {
+        cleanupBuffers();
         closeSslEngine();
+    }
+
+    private void cleanupBuffers() {
+        long totalCapacity = 0;
+        if(appOutBuffer != null) {
+            totalCapacity += appOutBuffer.capacity();
+            cleanupBuffer(appOutBuffer);
+        }
+        if(appInBuffer != null) {
+            totalCapacity += appInBuffer.capacity();
+            cleanupBuffer(appInBuffer);
+        }
+        if(networkOutBuffer != null) {
+            totalCapacity += networkOutBuffer.capacity();
+            cleanupBuffer(networkOutBuffer);
+        }
+        if(networkInBuffer != null) {
+            totalCapacity += networkInBuffer.capacity();
+            cleanupBuffer(networkInBuffer);
+        }
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Finished clearing all direct buffers, total capacity freed: %s bytes", totalCapacity);
+        }
     }
 
     private void closeSslEngine() {
