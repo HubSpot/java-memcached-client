@@ -187,6 +187,10 @@ public class TLSConnectionManager implements Closeable {
      * @throws SSLException from the call to SSLEngine::wrap if any occurred
      */
     public int wrapBufferForSend(ByteBuffer appOutBuffer, ByteBuffer networkOutBuffer) throws SSLException {
+        if (sslEngine == null) {
+                LOG.info("SSL Engine was null before wrap, reinitializing");
+            ensureSslEngineInitialized(false);
+        }
         SSLEngineResult wrap = sslEngine.wrap(appOutBuffer, networkOutBuffer);
         switch (wrap.getStatus()) {
             case BUFFER_UNDERFLOW:
@@ -205,6 +209,10 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public UnwrapResult unwrapReceivedBuffer (ByteBuffer networkInBuffer) throws IOException {
+        if (sslEngine == null) {
+                LOG.info("SSL Engine was null before unwrap, reinitializing");
+            ensureSslEngineInitialized(false);
+        }
         appInBuffer.clear();
         while(!Thread.currentThread().isInterrupted()) {
             SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
