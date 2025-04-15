@@ -2,6 +2,7 @@ package net.spy.memcached.tls;
 
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
+import net.spy.memcached.compat.BufferUtils;
 
 import javax.net.ssl.*;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.lang.reflect.Method;
 
 public class TLSConnectionManager implements Closeable {
 
@@ -68,32 +70,33 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void clearBuffers() {
+        long totalCapacity = 0;
         LOG.info("Starting to clear all direct buffers");
         if(appOutBuffer != null) {
-            LOG.info("Clearing appOutBuffer with capacity: {}", appOutBuffer.capacity());
-            appOutBuffer.clear();
+            totalCapacity += appOutBuffer.capacity();
+            BufferUtils.clean(appOutBuffer);
             appOutBuffer = null;
             LOG.info("Released appOutBuffer");
         }
         if(appInBuffer != null) {
-            LOG.info("Clearing appInBuffer with capacity: {}", appInBuffer.capacity());
-            appInBuffer.clear();
+            totalCapacity += appInBuffer.capacity();
+            BufferUtils.clean(appInBuffer);
             appInBuffer = null;
             LOG.info("Released appInBuffer");
         }
         if(networkOutBuffer != null) {
-            LOG.info("Clearing networkOutBuffer with capacity: {}", networkOutBuffer.capacity());
-            networkOutBuffer.clear();
+            totalCapacity += networkOutBuffer.capacity();
+            BufferUtils.clean(networkOutBuffer);
             networkOutBuffer = null;
             LOG.info("Released networkOutBuffer");
         }
         if(networkInBuffer != null) {
-            LOG.info("Clearing networkInBuffer with capacity: {}", networkInBuffer.capacity());
-            networkInBuffer.clear();
+            totalCapacity += networkInBuffer.capacity();
+            BufferUtils.clean(networkInBuffer);
             networkInBuffer = null;
             LOG.info("Released networkInBuffer");
         }
-        LOG.info("Finished clearing all direct buffers");
+        LOG.info("Finished clearing all direct buffers, total capacity freed: %s bytes", totalCapacity);
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
@@ -311,8 +314,9 @@ public class TLSConnectionManager implements Closeable {
     public ByteBuffer allocateAppBuffer(int suggestedSize) {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
-        // allocateDirect() to keep all bytes contiguous in memory
-        return ByteBuffer.allocateDirect(requiredSize);
+        ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
+        LOG.info("Allocated direct app buffer with capacity: %s bytes", buffer.capacity());
+        return buffer;
     }
 
     public ByteBuffer allocateNetworkBuffer() {
@@ -322,17 +326,21 @@ public class TLSConnectionManager implements Closeable {
     public ByteBuffer allocateNetworkBuffer(int suggestedSize) {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
-        // allocateDirect() to keep all bytes contiguous in memory
-        return ByteBuffer.allocateDirect(requiredSize);
+        ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
+        LOG.info("Allocated direct network buffer with capacity: %s bytes", buffer.capacity());
+        return buffer;
     }
 
     private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
+        ByteBuffer oldBuffer = buffer;
+        ByteBuffer newBuffer;
         if (suggestedCapacity > buffer.capacity()) {
-            return ByteBuffer.allocateDirect(suggestedCapacity);
+            newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
         } else {
-            // If the suggested capacity is still too small, double the size
-            return ByteBuffer.allocateDirect(buffer.capacity() * 2);
+            newBuffer = ByteBuffer.allocateDirect(buffer.capacity() * 2);
         }
+        BufferUtils.clean(oldBuffer);
+        return newBuffer;
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {
