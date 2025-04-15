@@ -69,15 +69,19 @@ public class TLSConnectionManager implements Closeable {
 
     private void cleanupBuffers() {
         if (appOutBuffer != null) {
+            appOutBuffer.clear();
             appOutBuffer = null;
         }
         if (appInBuffer != null) {
+            appInBuffer.clear();
             appInBuffer = null;
         }
         if (networkOutBuffer != null) {
+            networkOutBuffer.clear();
             networkOutBuffer = null;
         }
         if (networkInBuffer != null) {
+            networkInBuffer.clear();
             networkInBuffer = null;
         }
     }
