@@ -60,29 +60,29 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void initBuffers(SSLSession session) {
-        cleanupBuffers();
+        clearBuffers();
         appOutBuffer = allocateAppBuffer();
         appInBuffer = allocateAppBuffer();
         networkOutBuffer = allocateNetworkBuffer();
         networkInBuffer = allocateNetworkBuffer();
     }
 
-    private void cleanupBuffers() {
-        if (appOutBuffer != null) {
-            appOutBuffer.clear();
-            appOutBuffer = null;
+    private void clearBuffers() {
+        if(appOutBuffer != null) {
+            appOutBuffer = null; 
+            LOG.info("Released appOutBuffer");
         }
-        if (appInBuffer != null) {
-            appInBuffer.clear();
-            appInBuffer = null;
+        if(appInBuffer != null) {
+            appInBuffer = null; 
+            LOG.info("Released appInBuffer");
         }
-        if (networkOutBuffer != null) {
-            networkOutBuffer.clear();
+        if(networkOutBuffer != null) {
             networkOutBuffer = null;
+            LOG.info("Released networkOutBuffer");
         }
-        if (networkInBuffer != null) {
-            networkInBuffer.clear();
+        if(networkInBuffer != null) {
             networkInBuffer = null;
+            LOG.info("Released networkInBuffer");
         }
     }
 
@@ -191,10 +191,6 @@ public class TLSConnectionManager implements Closeable {
      * @throws SSLException from the call to SSLEngine::wrap if any occurred
      */
     public int wrapBufferForSend(ByteBuffer appOutBuffer, ByteBuffer networkOutBuffer) throws SSLException {
-        if (sslEngine == null) {
-                LOG.info("SSL Engine was null before wrap, reinitializing");
-            ensureSslEngineInitialized(false);
-        }
         SSLEngineResult wrap = sslEngine.wrap(appOutBuffer, networkOutBuffer);
         switch (wrap.getStatus()) {
             case BUFFER_UNDERFLOW:
@@ -213,10 +209,6 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public UnwrapResult unwrapReceivedBuffer (ByteBuffer networkInBuffer) throws IOException {
-        if (sslEngine == null) {
-                LOG.info("SSL Engine was null before unwrap, reinitializing");
-            ensureSslEngineInitialized(false);
-        }
         appInBuffer.clear();
         while(!Thread.currentThread().isInterrupted()) {
             SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
@@ -232,8 +224,9 @@ public class TLSConnectionManager implements Closeable {
                     appInBuffer.flip();
                     return new UnwrapResult(appInBuffer, unwrapResult);
                 case CLOSED:
+                    String peerHost = sslEngine.getPeerHost();  // Capture host before closing
                     this.close();
-                    throw new IOException(sslEngine.getPeerHost() + " - TLS Connection is closed");
+                    throw new IOException(peerHost + " - TLS Connection is closed");
                 default:
                     // This might get hit if the Status enum ever gets expanded, but for now, we should not hit this. Case
                     // required to make the Java compiler happy.
@@ -245,6 +238,7 @@ public class TLSConnectionManager implements Closeable {
 
     @Override
     public void close() throws IOException {
+        clearBuffers();
         closeSslEngine();
     }
 
@@ -343,7 +337,7 @@ public class TLSConnectionManager implements Closeable {
             }
         }
     }
-    
+
     public static class UnwrapResult {
         private final ByteBuffer dataBuffer;
         private final SSLEngineResult result;
@@ -367,7 +361,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     public boolean awaitHandshake(long msToWait) throws InterruptedException {
-       return handshakeSuccessful.await(msToWait, TimeUnit.MILLISECONDS);
+        return handshakeSuccessful.await(msToWait, TimeUnit.MILLISECONDS);
     }
 
     public void resetHandshakeStatus() {
