@@ -68,22 +68,32 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void clearBuffers() {
+        LOG.info("Starting to clear all direct buffers");
         if(appOutBuffer != null) {
-            appOutBuffer = null; 
+            LOG.info("Clearing appOutBuffer with capacity: {}", appOutBuffer.capacity());
+            appOutBuffer.clear();
+            appOutBuffer = null;
             LOG.info("Released appOutBuffer");
         }
         if(appInBuffer != null) {
-            appInBuffer = null; 
+            LOG.info("Clearing appInBuffer with capacity: {}", appInBuffer.capacity());
+            appInBuffer.clear();
+            appInBuffer = null;
             LOG.info("Released appInBuffer");
         }
         if(networkOutBuffer != null) {
+            LOG.info("Clearing networkOutBuffer with capacity: {}", networkOutBuffer.capacity());
+            networkOutBuffer.clear();
             networkOutBuffer = null;
             LOG.info("Released networkOutBuffer");
         }
         if(networkInBuffer != null) {
+            LOG.info("Clearing networkInBuffer with capacity: {}", networkInBuffer.capacity());
+            networkInBuffer.clear();
             networkInBuffer = null;
             LOG.info("Released networkInBuffer");
         }
+        LOG.info("Finished clearing all direct buffers");
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
