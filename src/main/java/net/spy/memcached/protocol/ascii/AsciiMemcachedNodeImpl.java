@@ -43,7 +43,8 @@ public final class AsciiMemcachedNodeImpl extends TCPMemcachedNodeImpl {
       BlockingQueue<Operation> rq, BlockingQueue<Operation> wq,
       BlockingQueue<Operation> iq, Long opQueueMaxBlockTimeNs, long dt,
       long at, ConnectionFactory fa) {
-    // ASCII never does auth
+    // ASCII never does auth with SASL, but we need to pass false for waitForAuth
+    // regardless of whether TLS is enabled
     super(sa, c, bufSize, rq, wq, iq, opQueueMaxBlockTimeNs, false, dt, at, fa);
   }
 
