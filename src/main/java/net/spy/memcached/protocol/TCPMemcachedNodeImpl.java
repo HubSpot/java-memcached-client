@@ -120,8 +120,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     // or reconfigure), and are passed to Channel.read() and Channel.write(),
     // use direct buffers to avoid
     //   http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6214569
-    rbuf = ByteBuffer.allocateDirect(bufSize);
-    wbuf = ByteBuffer.allocateDirect(bufSize);
+    rbuf = sslEnabled ? tlsConnectionManager.allocateBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
+    wbuf = sslEnabled ? tlsConnectionManager.allocateBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
     getWbuf().clear();
     readQ = rq;
     writeQ = wq;

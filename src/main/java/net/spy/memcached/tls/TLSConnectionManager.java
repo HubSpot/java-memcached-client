@@ -52,6 +52,17 @@ public class TLSConnectionManager implements Closeable {
         this.handshakeSuccessful = new CountDownLatch(1);
     }
 
+    /**
+     * Allocates a network buffer of the specified size.
+     * The buffer will be managed by the TLS connection manager's buffer pool.
+     *
+     * @param size The minimum size of the buffer to allocate
+     * @return A direct ByteBuffer from the network buffer pool
+     */
+    public ByteBuffer allocateBuffer(int size) {
+        return getOrCreateBuffer(netBufferPool, size, false);
+    }
+
     private ByteBuffer getOrCreateBuffer(Queue<ByteBuffer> pool, int size, boolean isApp) {
         ByteBuffer buffer = pool.poll();
         if (buffer != null) {
