@@ -37,10 +37,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
-
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -428,7 +426,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    */
   public final void addOp(Operation op) {
     try {
-      if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS) && awaitSslHandshakeMaybe()) {
+      if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS) || !awaitSslHandshakeMaybe()) {
         FailureMode mode = connectionFactory.getFailureMode();
         if (mode == FailureMode.Redistribute || mode == FailureMode.Retry) {
           getLogger().debug("Redistributing Operation " + op + " because auth "
