@@ -38,10 +38,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
-
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -832,7 +830,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   private static void cleanupBuffer(ByteBuffer buffer) {
-    if (buffer == null || !buffer.isDirect()) return;
+    if (buffer == null || !buffer.isDirect()) {
+      return;
+    }
     try {
       Method cleanerMethod = buffer.getClass().getMethod("cleaner");
       cleanerMethod.setAccessible(true);
@@ -841,7 +841,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
         cleaner.getClass().getMethod("clean").invoke(cleaner);
       }
     } catch (Exception e) {
-      // Use logger if available, otherwise ignore
+      // ignore
     }
   }
 
