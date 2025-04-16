@@ -1,11 +1,5 @@
 package net.spy.memcached.tls;
 
-import net.spy.memcached.compat.log.Logger;
-import net.spy.memcached.compat.log.LoggerFactory;
-import net.spy.memcached.compat.BufferUtils;
-
-import javax.net.ssl.*;
-import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -14,7 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.lang.reflect.Method;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLEngineResult;
+import javax.net.ssl.SSLEngineResult.HandshakeStatus;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLSession;
+import net.spy.memcached.compat.log.Logger;
+import net.spy.memcached.compat.log.LoggerFactory;
 
 public class TLSConnectionManager implements Closeable {
 
@@ -62,41 +63,13 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void initBuffers(SSLSession session) {
-        clearBuffers();
         appOutBuffer = allocateAppBuffer();
         appInBuffer = allocateAppBuffer();
         networkOutBuffer = allocateNetworkBuffer();
         networkInBuffer = allocateNetworkBuffer();
-    }
-
-    private void clearBuffers() {
-        long totalCapacity = 0;
-        LOG.info("Starting to clear all direct buffers");
-        if(appOutBuffer != null) {
-            totalCapacity += appOutBuffer.capacity();
-            BufferUtils.clean(appOutBuffer);
-            appOutBuffer = null;
-            LOG.info("Released appOutBuffer");
-        }
-        if(appInBuffer != null) {
-            totalCapacity += appInBuffer.capacity();
-            BufferUtils.clean(appInBuffer);
-            appInBuffer = null;
-            LOG.info("Released appInBuffer");
-        }
-        if(networkOutBuffer != null) {
-            totalCapacity += networkOutBuffer.capacity();
-            BufferUtils.clean(networkOutBuffer);
-            networkOutBuffer = null;
-            LOG.info("Released networkOutBuffer");
-        }
-        if(networkInBuffer != null) {
-            totalCapacity += networkInBuffer.capacity();
-            BufferUtils.clean(networkInBuffer);
-            networkInBuffer = null;
-            LOG.info("Released networkInBuffer");
-        }
-        LOG.info("Finished clearing all direct buffers, total capacity freed: %s bytes", totalCapacity);
+        
+        LOG.info("Initialized buffers - appOutBuffer: {} bytes, appInBuffer: {} bytes, networkOutBuffer: {} bytes, networkInBuffer: {} bytes",
+            appOutBuffer.capacity(), appInBuffer.capacity(), networkOutBuffer.capacity(), networkInBuffer.capacity());
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
@@ -115,8 +88,8 @@ public class TLSConnectionManager implements Closeable {
                 LOG.info("%s - Handshake status: %s", socketChannel.getRemoteAddress(), handshakeStatus.name());
             }
             while (!Thread.currentThread().isInterrupted()
-                    && handshakeStatus != HandshakeStatus.FINISHED
-                    && handshakeStatus != HandshakeStatus.NOT_HANDSHAKING) {
+              && handshakeStatus != HandshakeStatus.FINISHED
+              && handshakeStatus != HandshakeStatus.NOT_HANDSHAKING) {
 
                 switch (handshakeStatus) {
                     case NEED_TASK:
@@ -204,7 +177,15 @@ public class TLSConnectionManager implements Closeable {
      * @throws SSLException from the call to SSLEngine::wrap if any occurred
      */
     public int wrapBufferForSend(ByteBuffer appOutBuffer, ByteBuffer networkOutBuffer) throws SSLException {
+        LOG.info("Wrapping buffer - appOutBuffer: {} bytes (position: {}, remaining: {}), networkOutBuffer: {} bytes (position: {}, remaining: {})",
+            appOutBuffer.capacity(), appOutBuffer.position(), appOutBuffer.remaining(),
+            networkOutBuffer.capacity(), networkOutBuffer.position(), networkOutBuffer.remaining());
+            
         SSLEngineResult wrap = sslEngine.wrap(appOutBuffer, networkOutBuffer);
+        
+        LOG.info("Wrap result - bytesConsumed: {}, bytesProduced: {}, status: {}",
+            wrap.bytesConsumed(), wrap.bytesProduced(), wrap.getStatus());
+            
         switch (wrap.getStatus()) {
             case BUFFER_UNDERFLOW:
                 return WRAP_STATUS_BUFFER_UNDERFLOW;
@@ -221,10 +202,16 @@ public class TLSConnectionManager implements Closeable {
         }
     }
 
-    public UnwrapResult unwrapReceivedBuffer (ByteBuffer networkInBuffer) throws IOException {
+    public UnwrapResult unwrapReceivedBuffer(ByteBuffer networkInBuffer) throws IOException {
         appInBuffer.clear();
+        LOG.info("Unwrapping buffer - networkInBuffer: {} bytes (position: {}, remaining: {}), appInBuffer: {} bytes",
+            networkInBuffer.capacity(), networkInBuffer.position(), networkInBuffer.remaining(),
+            appInBuffer.capacity());
+            
         while(!Thread.currentThread().isInterrupted()) {
             SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
+            LOG.info("Unwrap result - bytesConsumed: {}, bytesProduced: {}, status: {}",
+                unwrapResult.bytesConsumed(), unwrapResult.bytesProduced(), unwrapResult.getStatus());
             switch (unwrapResult.getStatus()) {
                 case BUFFER_OVERFLOW:
                     // Application buffer is too small, set it to the correct size
@@ -250,7 +237,6 @@ public class TLSConnectionManager implements Closeable {
 
     @Override
     public void close() throws IOException {
-        clearBuffers();
         closeSslEngine();
     }
 
@@ -269,6 +255,9 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void handleHandshakeWrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
+        LOG.info("Handling handshake wrap result - status: {}, bytesConsumed: {}, bytesProduced: {}",
+            result.getStatus(), result.bytesConsumed(), result.bytesProduced());
+            
         switch (result.getStatus()) {
             case BUFFER_UNDERFLOW:
                 // We should not get here
@@ -291,6 +280,9 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void handleHandshakeUnwrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
+        LOG.info("Handling handshake unwrap result - status: {}, bytesConsumed: {}, bytesProduced: {}",
+            result.getStatus(), result.bytesConsumed(), result.bytesProduced());
+            
         switch (result.getStatus()) {
             case BUFFER_UNDERFLOW:
                 // If the network buffer is too small
@@ -315,7 +307,8 @@ public class TLSConnectionManager implements Closeable {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
         ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
-        LOG.info("Allocated direct app buffer with capacity: %s bytes", buffer.capacity());
+        LOG.info("Allocated application buffer - requested: {} bytes, actual: {} bytes",
+            suggestedSize, buffer.capacity());
         return buffer;
     }
 
@@ -327,24 +320,34 @@ public class TLSConnectionManager implements Closeable {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
         ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
-        LOG.info("Allocated direct network buffer with capacity: %s bytes", buffer.capacity());
+        LOG.info("Allocated network buffer - requested: {} bytes, actual: {} bytes",
+            suggestedSize, buffer.capacity());
         return buffer;
     }
 
     private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
-        ByteBuffer oldBuffer = buffer;
+        int oldCapacity = buffer.capacity();
         ByteBuffer newBuffer;
+        
         if (suggestedCapacity > buffer.capacity()) {
             newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
+            LOG.info("Enlarging buffer from {} to {} bytes (suggested capacity)",
+                oldCapacity, suggestedCapacity);
         } else {
-            newBuffer = ByteBuffer.allocateDirect(buffer.capacity() * 2);
+            // If the suggested capacity is still too small, double the size
+            int newCapacity = buffer.capacity() * 2;
+            newBuffer = ByteBuffer.allocateDirect(newCapacity);
+            LOG.info("Enlarging buffer from {} to {} bytes (doubled capacity)",
+                oldCapacity, newCapacity);
         }
-        BufferUtils.clean(oldBuffer);
         return newBuffer;
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {
         networkOutBuffer.flip(); // Change from reading to writing
+        LOG.info("Sending network buffer - capacity: {} bytes, position: {}, remaining: {}",
+            networkOutBuffer.capacity(), networkOutBuffer.position(), networkOutBuffer.remaining());
+            
         // Send data over the wire
         while(networkOutBuffer.hasRemaining()) {
             try {

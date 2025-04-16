@@ -37,10 +37,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
-
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -59,7 +57,7 @@ import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
  * operation queues.
  */
 public abstract class TCPMemcachedNodeImpl extends SpyObject implements
-    MemcachedNode {
+  MemcachedNode {
 
   private static final TimeoutException TIMEOUT_EXCEPTION = new TimeoutException("Memcached operation timed out");
 
@@ -142,9 +140,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   private MiniCircuitBreaker circuitBreaker(boolean enabled, SocketAddress sa) {
     if (enabled) {
       final CircuitBreaker circuitBreaker = new CircuitBreaker()
-          .withFailureThreshold(5, 10)
-          .withDelay(1, TimeUnit.SECONDS)
-          .withSuccessThreshold(1);
+        .withFailureThreshold(5, 10)
+        .withDelay(1, TimeUnit.SECONDS)
+        .withSuccessThreshold(1);
 
       circuitBreaker.onOpen(new LoggingRunnable(String.format("Circuit for node %s is now open due to timeouts", sa)));
       circuitBreaker.onHalfOpen(new LoggingRunnable(String.format("Circuit for node %s is now half-open", sa)));
@@ -277,17 +275,17 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
           ByteBuffer obuf = o.getBuffer();
           assert obuf != null : "Didn't get a write buffer from " + o;
           if (sslEnabled) {
-              try {
-                int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
-                if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
-                  tlsError = true;
-                } else {
-                  toWrite += wrapResult;
-                }
-              } catch (SSLException e) {
-                  tlsError = true;
-                  getLogger().error("Failed to wrap operation for TLS. Operation: %s", o, e);
+            try {
+              int wrapResult = tlsConnectionManager.wrapBufferForSend(obuf, getWbuf());
+              if (wrapResult == TLSConnectionManager.WRAP_STATUS_BUFFER_OVERFLOW) {
+                tlsError = true;
+              } else {
+                toWrite += wrapResult;
               }
+            } catch (SSLException e) {
+              tlsError = true;
+              getLogger().error("Failed to wrap operation for TLS. Operation: %s", o, e);
+            }
           } else {
             int bytesToCopy = Math.min(getWbuf().remaining(), obuf.remaining());
             byte[] b = new byte[bytesToCopy];
@@ -311,9 +309,9 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       }
       getWbuf().flip();
       assert toWrite <= getWbuf().capacity() : "toWrite exceeded capacity: "
-          + this;
+        + this;
       assert toWrite == getWbuf().remaining() : "Expected " + toWrite
-          + " remaining, got " + getWbuf().remaining();
+        + " remaining, got " + getWbuf().remaining();
     } else {
       getLogger().debug("Buffer is full, skipping");
     }
@@ -432,22 +430,22 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
         FailureMode mode = connectionFactory.getFailureMode();
         if (mode == FailureMode.Redistribute || mode == FailureMode.Retry) {
           getLogger().debug("Redistributing Operation " + op + " because auth "
-              + "latch taken longer than " + authWaitTime + " milliseconds to "
-              + "complete on node " + getSocketAddress());
+            + "latch taken longer than " + authWaitTime + " milliseconds to "
+            + "complete on node " + getSocketAddress());
           connection.retryOperation(op);
         } else {
           op.cancel();
           getLogger().warn("Operation canceled because authentication "
-              + "or reconnection and authentication has "
-              + "taken more than " + authWaitTime + " milliseconds to "
-              + "complete on node " + this);
+            + "or reconnection and authentication has "
+            + "taken more than " + authWaitTime + " milliseconds to "
+            + "complete on node " + this);
           getLogger().debug("Canceled operation %s", op.toString());
         }
         return;
       }
       if (!inputQueue.offer(op, opQueueMaxBlockTime, TimeUnit.MILLISECONDS)) {
         throw new IllegalStateException("Timed out waiting to add " + op
-            + "(max wait=" + opQueueMaxBlockTime + "ms)");
+          + "(max wait=" + opQueueMaxBlockTime + "ms)");
       }
     } catch (InterruptedException e) {
       // Restore the interrupted status
@@ -536,8 +534,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    */
   public final boolean isActive() {
     return reconnectAttempt.get() == 0 && getChannel() != null
-        && getChannel().isConnected()
-        && circuitBreaker.allowExecution();
+      && getChannel().isConnected()
+      && circuitBreaker.allowExecution();
   }
 
   /*
@@ -596,12 +594,12 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     int wsize = writeQ.size();
     int isize = inputQueue.size();
     return "{QA sa=" + getSocketAddress() + ", #Rops=" + rsize
-        + ", #Wops=" + wsize
-        + ", #iq=" + isize
-        + ", topRop=" + getCurrentReadOp()
-        + ", topWop=" + getCurrentWriteOp()
-        + ", toWrite=" + toWrite
-        + ", interested=" + sops + "}";
+      + ", #Wops=" + wsize
+      + ", #iq=" + isize
+      + ", topRop=" + getCurrentReadOp()
+      + ", topWop=" + getCurrentWriteOp()
+      + ", toWrite=" + toWrite
+      + ", interested=" + sops + "}";
   }
 
   /*
@@ -624,7 +622,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    */
   public final void setChannel(SocketChannel to) {
     assert channel == null || !channel.isOpen()
-        : "Attempting to overwrite channel";
+      : "Attempting to overwrite channel";
     channel = to;
   }
 
@@ -674,7 +672,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     assert wrote >= 0 : "Wrote negative bytes?";
     toWrite -= wrote;
     assert toWrite >= 0 : "toWrite went negative after writing " + wrote
-        + " bytes for " + this;
+      + " bytes for " + this;
     getLogger().debug("Wrote %d bytes", wrote);
     return wrote;
   }
@@ -695,10 +693,10 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   /*
-  * (non-Javadoc)
-  *
-  * @see net.spy.memcached.MemcachedNode#pendingOperationQueueSize
-  */
+   * (non-Javadoc)
+   *
+   * @see net.spy.memcached.MemcachedNode#pendingOperationQueueSize
+   */
   public int pendingOperationQueueSize() {
     return inputQueue.size();
   }
@@ -724,7 +722,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
         long continuousTimeoutNanos = System.nanoTime() - continuousTimeoutStart;
         if (TimeUnit.NANOSECONDS.toMillis(continuousTimeoutNanos) > durationThreshold) {
           getLogger().warn("%s exceeded continuous timeout threshold: %d consecutive timeouts over %dms",
-              socketAddress, continuousTimeout, TimeUnit.NANOSECONDS.toMillis(continuousTimeoutNanos));
+            socketAddress, continuousTimeout, TimeUnit.NANOSECONDS.toMillis(continuousTimeoutNanos));
           return true;
         }
       }
@@ -772,12 +770,12 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
 
   @Override
   public boolean executeTlsHandshake() {
-      try {
-        return tlsConnectionManager.doHandshake(channel);
-      } catch (IOException e) {
-        getLogger().error("SSL Handshake Failed", e);
-        return false;
-      }
+    try {
+      return tlsConnectionManager.doHandshake(channel);
+    } catch (IOException e) {
+      getLogger().error("SSL Handshake Failed", e);
+      return false;
+    }
   }
 
   private boolean awaitSslHandshakeMaybe() throws InterruptedException {
