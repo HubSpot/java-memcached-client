@@ -759,10 +759,6 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   }
 
   public final void setupForAuth() {
-    if (sslEnabled) {
-      tlsConnectionManager.resetHandshakeStatus();
-      return;
-    }
     if (shouldAuth) {
       authLatch = new CountDownLatch(1);
       if (inputQueue.size() > 0) {
@@ -771,6 +767,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       }
       assert (inputQueue.size() == 0);
       setupResend();
+    } else if (sslEnabled) {
+        tlsConnectionManager.resetHandshakeStatus();
     } else {
       authLatch = new CountDownLatch(0);
     }
