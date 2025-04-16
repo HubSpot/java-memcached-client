@@ -426,7 +426,14 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
    */
   public final void addOp(Operation op) {
     try {
-      if (!authLatch.await(authWaitTime, TimeUnit.MILLISECONDS) || !awaitSslHandshakeMaybe()) {
+      boolean authComplete = false;
+      if(shouldAuth) {
+        authComplete = authLatch.await(authWaitTime, TimeUnit.MILLISECONDS);
+      }
+      else if(sslEnabled) {
+        authComplete = awaitSslHandshakeMaybe();
+      }
+      if (!authComplete) {
         FailureMode mode = connectionFactory.getFailureMode();
         if (mode == FailureMode.Redistribute || mode == FailureMode.Retry) {
           getLogger().debug("Redistributing Operation " + op + " because auth "
