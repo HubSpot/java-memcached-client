@@ -2,17 +2,12 @@ package net.spy.memcached.tls;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.lang.management.BufferPoolMXBean;
-import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -25,43 +20,6 @@ import net.spy.memcached.compat.log.LoggerFactory;
 public class TLSConnectionManager implements Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(TLSConnectionManager.class);
-    private static final AtomicLong totalDirectMemoryUsed = new AtomicLong(0);
-    private static final int MAX_BUFFER_SIZE = 65536; // 64KB max buffer size
-    
-    /**
-     * Set to track all DirectByteBuffers allocated by this instance.
-     * Note: This tracking is for monitoring purposes only.
-     * Actual native memory release is handled by the JVM's DirectByteBuffer cleaner
-     * when the buffer becomes unreachable and garbage collection occurs.
-     */
-    private final Set<ByteBuffer> allocatedBuffers = ConcurrentHashMap.newKeySet();
-    
-    // Get the direct buffer pool MX bean for accurate native memory tracking
-    private static final BufferPoolMXBean directBufferPool = ManagementFactory.getPlatformMXBeans(BufferPoolMXBean.class)
-        .stream()
-        .filter(pool -> pool.getName().equals("direct"))
-        .findFirst()
-        .orElse(null);
-
-    private static void logNativeMemoryStats(String operation, ByteBuffer buffer) {
-        if (buffer != null && buffer.isDirect()) {
-            long bufferSize = buffer.capacity();
-            totalDirectMemoryUsed.addAndGet(bufferSize);
-            
-            if (directBufferPool != null) {
-                LOG.info("%s - Native memory stats: current buffer: %s bytes, total count: %s, total capacity: %s bytes, memory used: %s bytes",
-                    operation,
-                    bufferSize,
-                    directBufferPool.getCount(),
-                    directBufferPool.getTotalCapacity(),
-                    directBufferPool.getMemoryUsed());
-            } else {
-                // Fallback if MXBean not available
-                LOG.info("%s - Direct memory: current buffer: %s bytes, total allocated: %s bytes",
-                    operation, bufferSize, totalDirectMemoryUsed.get());
-            }
-        }
-    }
 
     private final SSLContext sslContext;
     private SSLEngine sslEngine;
@@ -104,14 +62,23 @@ public class TLSConnectionManager implements Closeable {
         sslEngine.setUseClientMode(true);
     }
 
+    private void cleanupBuffers() {
+        appOutBuffer = null;
+        appInBuffer = null;
+        networkOutBuffer = null;
+        networkInBuffer = null;
+        // Let the garbage collector handle the direct buffer cleanup
+        System.gc();
+    }
+
     private void initBuffers(SSLSession session) {
+        // Clean up any existing buffers first
+        cleanupBuffers();
+
         appOutBuffer = allocateAppBuffer();
         appInBuffer = allocateAppBuffer();
         networkOutBuffer = allocateNetworkBuffer();
         networkInBuffer = allocateNetworkBuffer();
-        
-        LOG.info("Initialized buffers - appOutBuffer: %s bytes, appInBuffer: %s bytes, networkOutBuffer: %s bytes, networkInBuffer: %s bytes",
-            appOutBuffer.capacity(), appInBuffer.capacity(), networkOutBuffer.capacity(), networkInBuffer.capacity());
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
@@ -219,15 +186,7 @@ public class TLSConnectionManager implements Closeable {
      * @throws SSLException from the call to SSLEngine::wrap if any occurred
      */
     public int wrapBufferForSend(ByteBuffer appOutBuffer, ByteBuffer networkOutBuffer) throws SSLException {
-        LOG.info("Wrapping buffer - appOutBuffer: %s bytes (position: %s, remaining: %s), networkOutBuffer: %s bytes (position: %s, remaining: %s)",
-            appOutBuffer.capacity(), appOutBuffer.position(), appOutBuffer.remaining(),
-            networkOutBuffer.capacity(), networkOutBuffer.position(), networkOutBuffer.remaining());
-            
         SSLEngineResult wrap = sslEngine.wrap(appOutBuffer, networkOutBuffer);
-        
-        LOG.info("Wrap result - bytesConsumed: %s, bytesProduced: %s, status: %s",
-            wrap.bytesConsumed(), wrap.bytesProduced(), wrap.getStatus());
-            
         switch (wrap.getStatus()) {
             case BUFFER_UNDERFLOW:
                 return WRAP_STATUS_BUFFER_UNDERFLOW;
@@ -244,16 +203,10 @@ public class TLSConnectionManager implements Closeable {
         }
     }
 
-    public UnwrapResult unwrapReceivedBuffer(ByteBuffer networkInBuffer) throws IOException {
+    public UnwrapResult unwrapReceivedBuffer (ByteBuffer networkInBuffer) throws IOException {
         appInBuffer.clear();
-        LOG.info("Unwrapping buffer - networkInBuffer: %s bytes (position: %s, remaining: %s), appInBuffer: %s bytes",
-            networkInBuffer.capacity(), networkInBuffer.position(), networkInBuffer.remaining(),
-            appInBuffer.capacity());
-            
         while(!Thread.currentThread().isInterrupted()) {
             SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
-            LOG.info("Unwrap result - bytesConsumed: %s, bytesProduced: %s, status: %s",
-                unwrapResult.bytesConsumed(), unwrapResult.bytesProduced(), unwrapResult.getStatus());
             switch (unwrapResult.getStatus()) {
                 case BUFFER_OVERFLOW:
                     // Application buffer is too small, set it to the correct size
@@ -279,76 +232,58 @@ public class TLSConnectionManager implements Closeable {
 
     @Override
     public void close() throws IOException {
-        // Remove tracking of all buffers
-        // Note: Actual native memory will be freed by JVM when buffers become unreachable
-        for (ByteBuffer buffer : allocatedBuffers) {
-            if (buffer != null && buffer.isDirect()) {
-                untrackBuffer(buffer, "tracked buffer");
-            }
-        }
-        allocatedBuffers.clear();
-        
-        // Remove tracking of main buffers
-        untrackBuffer(appOutBuffer, "appOutBuffer");
-        untrackBuffer(appInBuffer, "appInBuffer");
-        untrackBuffer(networkOutBuffer, "networkOutBuffer");
-        untrackBuffer(networkInBuffer, "networkInBuffer");
-        
-        LOG.info("TLS connection closing - tracked direct memory: %s bytes, JVM direct buffer count: %s",
-            totalDirectMemoryUsed.get(),
-            directBufferPool != null ? directBufferPool.getCount() : "unknown");
-            
+        cleanupBuffers();
         closeSslEngine();
     }
 
     private void closeSslEngine() {
-        sslEngine.setEnableSessionCreation(false);
-        sslEngine.closeOutbound();
-        try {
-            sslEngine.closeInbound();
-        } catch (SSLException e) {
-            if (LOG.isDebugEnabled()) {
-                // This doesn't seem to be critical, but it could be nice to know about
-                LOG.warn("Tried to close inbound traffic but has not received a TLS close notification yet due to end of stream.", e);
+        if (sslEngine != null) {
+            sslEngine.setEnableSessionCreation(false);
+            sslEngine.closeOutbound();
+            try {
+                sslEngine.closeInbound();
+            } catch (SSLException e) {
+                if (LOG.isDebugEnabled()) {
+                    // This doesn't seem to be critical, but it could be nice to know about
+                    LOG.warn("Tried to close inbound traffic but has not received a TLS close notification yet due to end of stream.", e);
+                }
             }
+            sslEngine = null;
         }
-        sslEngine = null;
     }
 
     private void handleHandshakeWrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
-        LOG.info("Handling handshake wrap result - status: %s, bytesConsumed: %s, bytesProduced: %s",
-            result.getStatus(), result.bytesConsumed(), result.bytesProduced());
-            
         switch (result.getStatus()) {
             case BUFFER_UNDERFLOW:
+                // We should not get here
                 throw new SSLException("Buffer underflow occurred after wrap");
             case BUFFER_OVERFLOW:
+                // If networkOutBuffer is too small to contain the response
                 networkOutBuffer = enlargeBuffer(networkOutBuffer, sslEngine.getSession().getPacketBufferSize());
+                // Try again with new larger buffer
                 break;
             case OK:
                 sendNetworkBuffer(socketChannel);
                 break;
             case CLOSED:
+                // We need to tell the server we're closing
                 sendNetworkBuffer(socketChannel);
+                // The next status will be NEED_UNWRAP and we'll need to pre-emptively clear the input network data
                 networkInBuffer.clear();
                 break;
         }
     }
 
     private void handleHandshakeUnwrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
-        LOG.info("Handling handshake unwrap result - status: %s, bytesConsumed: %s, bytesProduced: %s",
-            result.getStatus(), result.bytesConsumed(), result.bytesProduced());
-            
         switch (result.getStatus()) {
             case BUFFER_UNDERFLOW:
-                // Only reallocate if our buffer is too small for the packet size
-                if (networkInBuffer.capacity() < sslEngine.getSession().getPacketBufferSize()) {
-                    networkInBuffer = enlargeBuffer(networkInBuffer, sslEngine.getSession().getPacketBufferSize());
-                }
-                // Otherwise, we just need to wait for more data
+                // If the network buffer is too small
+                networkInBuffer = enlargeBuffer(networkInBuffer, sslEngine.getSession().getPacketBufferSize());
                 break;
             case BUFFER_OVERFLOW:
+                // if networkInBuffer is larger than appInBuffer
                 appInBuffer = enlargeBuffer(appInBuffer, sslEngine.getSession().getApplicationBufferSize());
+                // try again with larger buffer
                 break;
             case OK:
             case CLOSED:
@@ -363,10 +298,8 @@ public class TLSConnectionManager implements Closeable {
     public ByteBuffer allocateAppBuffer(int suggestedSize) {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
-        ByteBuffer buffer = allocateAndTrackDirectBuffer(requiredSize);
-        LOG.info("Allocated application buffer - requested: %s bytes, actual: %s bytes",
-            suggestedSize, buffer.capacity());
-        return buffer;
+        // allocateDirect() to keep all bytes contiguous in memory
+        return ByteBuffer.allocateDirect(requiredSize);
     }
 
     public ByteBuffer allocateNetworkBuffer() {
@@ -376,17 +309,32 @@ public class TLSConnectionManager implements Closeable {
     public ByteBuffer allocateNetworkBuffer(int suggestedSize) {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
-        ByteBuffer buffer = allocateAndTrackDirectBuffer(requiredSize);
-        LOG.info("Allocated network buffer - requested: %s bytes, actual: %s bytes",
-            suggestedSize, buffer.capacity());
-        return buffer;
+        // allocateDirect() to keep all bytes contiguous in memory
+        return ByteBuffer.allocateDirect(requiredSize);
+    }
+
+    private static ByteBuffer enlargeBuffer(ByteBuffer oldBuffer, int suggestedCapacity) {
+        ByteBuffer newBuffer;
+        if (suggestedCapacity > oldBuffer.capacity()) {
+            newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
+        } else {
+            // If the suggested capacity is still too small, double the size
+            newBuffer = ByteBuffer.allocateDirect(oldBuffer.capacity() * 2);
+        }
+
+        // Copy any remaining data from the old buffer to the new one
+        oldBuffer.flip();
+        newBuffer.put(oldBuffer);
+
+        // Let the garbage collector handle the cleanup of the old buffer
+        oldBuffer = null;
+        System.gc();
+
+        return newBuffer;
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {
         networkOutBuffer.flip(); // Change from reading to writing
-        LOG.info("Sending network buffer - capacity: %s bytes, position: %s, remaining: %s",
-            networkOutBuffer.capacity(), networkOutBuffer.position(), networkOutBuffer.remaining());
-            
         // Send data over the wire
         while(networkOutBuffer.hasRemaining()) {
             try {
@@ -425,67 +373,5 @@ public class TLSConnectionManager implements Closeable {
 
     public void resetHandshakeStatus() {
         handshakeSuccessful = new CountDownLatch(1);
-    }
-
-    private ByteBuffer allocateAndTrackDirectBuffer(int size) {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(size);
-        allocatedBuffers.add(buffer);
-        totalDirectMemoryUsed.addAndGet(size);
-        logNativeMemoryStats("Buffer allocation", buffer);
-        return buffer;
-    }
-
-    private void untrackBuffer(ByteBuffer buffer, String bufferName) {
-        if (buffer != null && buffer.isDirect()) {
-            int capacity = buffer.capacity();
-            totalDirectMemoryUsed.addAndGet(-capacity);
-            allocatedBuffers.remove(buffer);
-            LOG.info("Untracked %s (native memory will be freed by JVM) - size: %s bytes, remaining tracked buffers: %s, tracked memory: %s bytes",
-                bufferName, capacity, allocatedBuffers.size(), totalDirectMemoryUsed.get());
-        }
-    }
-
-    private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
-        if (buffer == null) {
-            return null;
-        }
-
-        int oldCapacity = buffer.capacity();
-        
-        // If current buffer is big enough, just clear and reuse it
-        if (oldCapacity >= suggestedCapacity) {
-            buffer.clear();
-            return buffer;
-        }
-
-        // Don't exceed max buffer size
-        int newCapacity = Math.min(
-            suggestedCapacity > oldCapacity ? suggestedCapacity : oldCapacity * 2,
-            MAX_BUFFER_SIZE
-        );
-
-        // If we can't grow anymore, throw exception instead of infinite growth
-        if (newCapacity == oldCapacity) {
-            throw new IllegalStateException(String.format(
-                "Buffer cannot be enlarged: current size=%d, suggested=%d, max=%d",
-                oldCapacity, suggestedCapacity, MAX_BUFFER_SIZE));
-        }
-
-        ByteBuffer newBuffer = ByteBuffer.allocateDirect(newCapacity);
-        
-        // Copy any remaining data
-        buffer.flip();
-        newBuffer.put(buffer);
-        
-        if (buffer.isDirect()) {
-            totalDirectMemoryUsed.addAndGet(-oldCapacity);
-            LOG.info("Freed buffer memory: %s bytes, current direct buffer count: %s, memory used: %s bytes",
-                oldCapacity,
-                directBufferPool != null ? directBufferPool.getCount() : "unknown",
-                directBufferPool != null ? directBufferPool.getMemoryUsed() : totalDirectMemoryUsed.get());
-        }
-        
-        logNativeMemoryStats("Buffer enlarged", newBuffer);
-        return newBuffer;
     }
 }
