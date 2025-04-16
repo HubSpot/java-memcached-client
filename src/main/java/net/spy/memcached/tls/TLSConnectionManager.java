@@ -2,11 +2,12 @@ package net.spy.memcached.tls;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
@@ -21,13 +22,21 @@ import net.spy.memcached.compat.log.LoggerFactory;
 public class TLSConnectionManager implements Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(TLSConnectionManager.class);
+    
+    // Initial buffer sizes - start larger to reduce resizing
+    private static final int INITIAL_APP_BUFFER_SIZE = 32768; // 32KB
+    private static final int INITIAL_NET_BUFFER_SIZE = 32768; // 32KB
+    private static final int MAX_POOL_SIZE = 32; // Limit pool size to prevent excessive memory usage
+    
+    // Buffer pools for reuse
+    private static final Queue<ByteBuffer> appBufferPool = new ConcurrentLinkedQueue<>();
+    private static final Queue<ByteBuffer> netBufferPool = new ConcurrentLinkedQueue<>();
 
     private final SSLContext sslContext;
     private SSLEngine sslEngine;
 
     public static final int WRAP_STATUS_BUFFER_UNDERFLOW = -1;
     public static final int WRAP_STATUS_BUFFER_OVERFLOW = -2;
-
 
     private SSLSession currentSession;
 
@@ -41,6 +50,90 @@ public class TLSConnectionManager implements Closeable {
     public TLSConnectionManager(SSLContext sslContext) {
         this.sslContext = sslContext;
         this.handshakeSuccessful = new CountDownLatch(1);
+    }
+
+    private ByteBuffer getOrCreateBuffer(Queue<ByteBuffer> pool, int size, boolean isApp) {
+        ByteBuffer buffer = pool.poll();
+        if (buffer != null) {
+            buffer.clear(); // Reset the buffer for reuse
+            if (buffer.capacity() >= size) {
+                return buffer;
+            }
+            // If buffer is too small, just let it be garbage collected
+        }
+        
+        // Create new buffer with the larger of requested size or initial size
+        int bufferSize = Math.max(size, isApp ? INITIAL_APP_BUFFER_SIZE : INITIAL_NET_BUFFER_SIZE);
+        return ByteBuffer.allocateDirect(bufferSize);
+    }
+
+    private void returnBufferToPool(Queue<ByteBuffer> pool, ByteBuffer buffer) {
+        if (buffer == null || !buffer.isDirect()) {
+            return;
+        }
+        
+        if (pool.size() < MAX_POOL_SIZE) {
+            buffer.clear();
+            pool.offer(buffer);
+        }
+        // If pool is full, just let the buffer be garbage collected
+    }
+
+    private void initBuffers(SSLSession session) {
+        int appSize = Math.max(session.getApplicationBufferSize(), INITIAL_APP_BUFFER_SIZE);
+        int netSize = Math.max(session.getPacketBufferSize(), INITIAL_NET_BUFFER_SIZE);
+        
+        appOutBuffer = getOrCreateBuffer(appBufferPool, appSize, true);
+        appInBuffer = getOrCreateBuffer(appBufferPool, appSize, true);
+        networkOutBuffer = getOrCreateBuffer(netBufferPool, netSize, false);
+        networkInBuffer = getOrCreateBuffer(netBufferPool, netSize, false);
+    }
+
+    @Override
+    public void close() throws IOException {
+        cleanupBuffers();
+        closeSslEngine();
+    }
+
+    private void cleanupBuffers() {
+        long totalCapacity = 0;
+        if(appOutBuffer != null) {
+            totalCapacity += appOutBuffer.capacity();
+            returnBufferToPool(appBufferPool, appOutBuffer);
+            appOutBuffer = null;
+        }
+        if(appInBuffer != null) {
+            totalCapacity += appInBuffer.capacity();
+            returnBufferToPool(appBufferPool, appInBuffer);
+            appInBuffer = null;
+        }
+        if(networkOutBuffer != null) {
+            totalCapacity += networkOutBuffer.capacity();
+            returnBufferToPool(netBufferPool, networkOutBuffer);
+            networkOutBuffer = null;
+        }
+        if(networkInBuffer != null) {
+            totalCapacity += networkInBuffer.capacity();
+            returnBufferToPool(netBufferPool, networkInBuffer);
+            networkInBuffer = null;
+        }
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Released direct buffers back to pool, total capacity: %s bytes", totalCapacity);
+        }
+    }
+
+    private ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
+        ByteBuffer oldBuffer = buffer;
+        boolean isApp = appBufferPool.contains(oldBuffer) || appOutBuffer == oldBuffer || appInBuffer == oldBuffer;
+        Queue<ByteBuffer> pool = isApp ? appBufferPool : netBufferPool;
+        
+        // Create new buffer with double the suggested capacity to reduce future resizing
+        ByteBuffer newBuffer = getOrCreateBuffer(pool, Math.max(suggestedCapacity * 2, buffer.capacity() * 2), isApp);
+        
+        // Return old buffer to pool if possible
+        returnBufferToPool(pool, oldBuffer);
+        
+        return newBuffer;
     }
 
     private void initSslEngine() {
@@ -61,13 +154,6 @@ public class TLSConnectionManager implements Closeable {
         }
         sslEngine = sslContext.createSSLEngine();
         sslEngine.setUseClientMode(true);
-    }
-
-    private void initBuffers(SSLSession session) {
-        appOutBuffer = allocateAppBuffer();
-        appInBuffer = allocateAppBuffer();
-        networkOutBuffer = allocateNetworkBuffer();
-        networkInBuffer = allocateNetworkBuffer();
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
@@ -219,55 +305,6 @@ public class TLSConnectionManager implements Closeable {
         throw new RuntimeException(sslEngine.getPeerHost() + " - Interrupted while unwrapping read buffer");
     }
 
-    private static void cleanupBuffer(ByteBuffer buffer) {
-        if (buffer == null || !buffer.isDirect()) {
-            return;
-        }
-        try {
-            Method cleanerMethod = buffer.getClass().getMethod("cleaner");
-            cleanerMethod.setAccessible(true);
-            Object cleaner = cleanerMethod.invoke(buffer);
-            if (cleaner != null) {
-                cleaner.getClass().getMethod("clean").invoke(cleaner);
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-    }
-
-    @Override
-    public void close() throws IOException {
-        cleanupBuffers();
-        closeSslEngine();
-    }
-
-    private void cleanupBuffers() {
-        long totalCapacity = 0;
-        if(appOutBuffer != null) {
-            totalCapacity += appOutBuffer.capacity();
-            cleanupBuffer(appOutBuffer);
-            appOutBuffer = null;
-        }
-        if(appInBuffer != null) {
-            totalCapacity += appInBuffer.capacity();
-            cleanupBuffer(appInBuffer);
-            appInBuffer = null;
-        }
-        if(networkOutBuffer != null) {
-            totalCapacity += networkOutBuffer.capacity();
-            cleanupBuffer(networkOutBuffer);
-            networkOutBuffer = null;
-        }
-        if(networkInBuffer != null) {
-            totalCapacity += networkInBuffer.capacity();
-            cleanupBuffer(networkInBuffer);
-            networkInBuffer = null;
-        }
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Finished clearing all direct buffers, total capacity freed: %s bytes", totalCapacity);
-        }
-    }
-
     private void closeSslEngine() {
         sslEngine.setEnableSessionCreation(false);
         sslEngine.closeOutbound();
@@ -319,41 +356,6 @@ public class TLSConnectionManager implements Closeable {
             case CLOSED:
                 break;
         }
-    }
-
-    public ByteBuffer allocateAppBuffer() {
-        return allocateAppBuffer(0);
-    }
-
-    public ByteBuffer allocateAppBuffer(int suggestedSize) {
-        ensureSslEngineInitialized(false);
-        int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
-        // allocateDirect() to keep all bytes contiguous in memory
-        return ByteBuffer.allocateDirect(requiredSize);
-    }
-
-    public ByteBuffer allocateNetworkBuffer() {
-        return ByteBuffer.allocateDirect(0);
-    }
-
-    public ByteBuffer allocateNetworkBuffer(int suggestedSize) {
-        ensureSslEngineInitialized(false);
-        int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
-        // allocateDirect() to keep all bytes contiguous in memory
-        return ByteBuffer.allocateDirect(requiredSize);
-    }
-
-    private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
-        ByteBuffer oldBuffer = buffer;
-        ByteBuffer newBuffer;
-        if (suggestedCapacity > buffer.capacity()) {
-            newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
-        } else {
-            // If the suggested capacity is still too small, double the size
-            newBuffer = ByteBuffer.allocateDirect(buffer.capacity() * 2);
-        }
-        cleanupBuffer(oldBuffer);
-        return newBuffer;
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {

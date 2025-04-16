@@ -24,7 +24,6 @@
 package net.spy.memcached.protocol;
 
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
@@ -38,8 +37,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
+
 import net.jodah.failsafe.CircuitBreaker;
 import net.jodah.failsafe.function.CheckedRunnable;
 import net.spy.memcached.ConnectionFactory;
@@ -58,7 +59,7 @@ import net.spy.memcached.tls.TLSConnectionManager.UnwrapResult;
  * operation queues.
  */
 public abstract class TCPMemcachedNodeImpl extends SpyObject implements
-    MemcachedNode, AutoCloseable {
+    MemcachedNode {
 
   private static final TimeoutException TIMEOUT_EXCEPTION = new TimeoutException("Memcached operation timed out");
 
@@ -119,8 +120,8 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     // or reconfigure), and are passed to Channel.read() and Channel.write(),
     // use direct buffers to avoid
     //   http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6214569
-    rbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
-    wbuf = sslEnabled ? tlsConnectionManager.allocateNetworkBuffer(bufSize) : ByteBuffer.allocateDirect(bufSize);
+    rbuf = ByteBuffer.allocateDirect(bufSize);
+    wbuf = ByteBuffer.allocateDirect(bufSize);
     getWbuf().clear();
     readQ = rq;
     writeQ = wq;
@@ -827,31 +828,5 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     public void run() throws Exception {
       getLogger().warn(message);
     }
-  }
-
-  private static void cleanupBuffer(ByteBuffer buffer) {
-    if (buffer == null || !buffer.isDirect()) {
-      return;
-    }
-    try {
-      Method cleanerMethod = buffer.getClass().getMethod("cleaner");
-      cleanerMethod.setAccessible(true);
-      Object cleaner = cleanerMethod.invoke(buffer);
-      if (cleaner != null) {
-        cleaner.getClass().getMethod("clean").invoke(cleaner);
-      }
-    } catch (Exception e) {
-      // ignore
-    }
-  }
-
-  @Override
-  public void close() {
-    cleanupBuffers();
-  }
-
-  private void cleanupBuffers() {
-    cleanupBuffer(rbuf);
-    cleanupBuffer(wbuf);
   }
 }
