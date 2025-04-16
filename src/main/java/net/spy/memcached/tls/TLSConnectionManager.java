@@ -68,7 +68,7 @@ public class TLSConnectionManager implements Closeable {
         networkOutBuffer = allocateNetworkBuffer();
         networkInBuffer = allocateNetworkBuffer();
         
-        LOG.info("Initialized buffers - appOutBuffer: {} bytes, appInBuffer: {} bytes, networkOutBuffer: {} bytes, networkInBuffer: {} bytes",
+        LOG.info("Initialized buffers - appOutBuffer: %s bytes, appInBuffer: %s bytes, networkOutBuffer: %s bytes, networkInBuffer: %s bytes",
             appOutBuffer.capacity(), appInBuffer.capacity(), networkOutBuffer.capacity(), networkInBuffer.capacity());
     }
 
@@ -177,13 +177,13 @@ public class TLSConnectionManager implements Closeable {
      * @throws SSLException from the call to SSLEngine::wrap if any occurred
      */
     public int wrapBufferForSend(ByteBuffer appOutBuffer, ByteBuffer networkOutBuffer) throws SSLException {
-        LOG.info("Wrapping buffer - appOutBuffer: {} bytes (position: {}, remaining: {}), networkOutBuffer: {} bytes (position: {}, remaining: {})",
+        LOG.info("Wrapping buffer - appOutBuffer: %s bytes (position: %s, remaining: %s), networkOutBuffer: %s bytes (position: %s, remaining: %s)",
             appOutBuffer.capacity(), appOutBuffer.position(), appOutBuffer.remaining(),
             networkOutBuffer.capacity(), networkOutBuffer.position(), networkOutBuffer.remaining());
             
         SSLEngineResult wrap = sslEngine.wrap(appOutBuffer, networkOutBuffer);
         
-        LOG.info("Wrap result - bytesConsumed: {}, bytesProduced: {}, status: {}",
+        LOG.info("Wrap result - bytesConsumed: %s, bytesProduced: %s, status: %s",
             wrap.bytesConsumed(), wrap.bytesProduced(), wrap.getStatus());
             
         switch (wrap.getStatus()) {
@@ -204,13 +204,13 @@ public class TLSConnectionManager implements Closeable {
 
     public UnwrapResult unwrapReceivedBuffer(ByteBuffer networkInBuffer) throws IOException {
         appInBuffer.clear();
-        LOG.info("Unwrapping buffer - networkInBuffer: {} bytes (position: {}, remaining: {}), appInBuffer: {} bytes",
+        LOG.info("Unwrapping buffer - networkInBuffer: %s bytes (position: %s, remaining: %s), appInBuffer: %s bytes",
             networkInBuffer.capacity(), networkInBuffer.position(), networkInBuffer.remaining(),
             appInBuffer.capacity());
             
         while(!Thread.currentThread().isInterrupted()) {
             SSLEngineResult unwrapResult = sslEngine.unwrap(networkInBuffer, appInBuffer);
-            LOG.info("Unwrap result - bytesConsumed: {}, bytesProduced: {}, status: {}",
+            LOG.info("Unwrap result - bytesConsumed: %s, bytesProduced: %s, status: %s",
                 unwrapResult.bytesConsumed(), unwrapResult.bytesProduced(), unwrapResult.getStatus());
             switch (unwrapResult.getStatus()) {
                 case BUFFER_OVERFLOW:
@@ -255,7 +255,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void handleHandshakeWrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
-        LOG.info("Handling handshake wrap result - status: {}, bytesConsumed: {}, bytesProduced: {}",
+        LOG.info("Handling handshake wrap result - status: %s, bytesConsumed: %s, bytesProduced: %s",
             result.getStatus(), result.bytesConsumed(), result.bytesProduced());
             
         switch (result.getStatus()) {
@@ -280,7 +280,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void handleHandshakeUnwrapResult(SocketChannel socketChannel, SSLEngineResult result) throws SSLException {
-        LOG.info("Handling handshake unwrap result - status: {}, bytesConsumed: {}, bytesProduced: {}",
+        LOG.info("Handling handshake unwrap result - status: %s, bytesConsumed: %s, bytesProduced: %s",
             result.getStatus(), result.bytesConsumed(), result.bytesProduced());
             
         switch (result.getStatus()) {
@@ -307,7 +307,7 @@ public class TLSConnectionManager implements Closeable {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
         ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
-        LOG.info("Allocated application buffer - requested: {} bytes, actual: {} bytes",
+        LOG.info("Allocated application buffer - requested: %s bytes, actual: %s bytes",
             suggestedSize, buffer.capacity());
         return buffer;
     }
@@ -320,7 +320,7 @@ public class TLSConnectionManager implements Closeable {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
         ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
-        LOG.info("Allocated network buffer - requested: {} bytes, actual: {} bytes",
+        LOG.info("Allocated network buffer - requested: %s bytes, actual: %s bytes",
             suggestedSize, buffer.capacity());
         return buffer;
     }
@@ -331,13 +331,13 @@ public class TLSConnectionManager implements Closeable {
         
         if (suggestedCapacity > buffer.capacity()) {
             newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
-            LOG.info("Enlarging buffer from {} to {} bytes (suggested capacity)",
+            LOG.info("Enlarging buffer from %s to %s bytes (suggested capacity)",
                 oldCapacity, suggestedCapacity);
         } else {
             // If the suggested capacity is still too small, double the size
             int newCapacity = buffer.capacity() * 2;
             newBuffer = ByteBuffer.allocateDirect(newCapacity);
-            LOG.info("Enlarging buffer from {} to {} bytes (doubled capacity)",
+            LOG.info("Enlarging buffer from %s to %s bytes (doubled capacity)",
                 oldCapacity, newCapacity);
         }
         return newBuffer;
@@ -345,7 +345,7 @@ public class TLSConnectionManager implements Closeable {
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {
         networkOutBuffer.flip(); // Change from reading to writing
-        LOG.info("Sending network buffer - capacity: {} bytes, position: {}, remaining: {}",
+        LOG.info("Sending network buffer - capacity: %s bytes, position: %s, remaining: %s",
             networkOutBuffer.capacity(), networkOutBuffer.position(), networkOutBuffer.remaining());
             
         // Send data over the wire
