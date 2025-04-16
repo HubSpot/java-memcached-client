@@ -2,6 +2,8 @@ package net.spy.memcached.tls;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.management.BufferPoolMXBean;
+import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
@@ -17,14 +19,38 @@ import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
-import sun.misc.SharedSecrets;
-import sun.misc.JavaNioAccess;
 
 public class TLSConnectionManager implements Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(TLSConnectionManager.class);
     private static final AtomicLong totalDirectMemoryUsed = new AtomicLong(0);
-    private static final JavaNioAccess nioAccess = SharedSecrets.getJavaNioAccess();
+    
+    // Get the direct buffer pool MX bean for accurate native memory tracking
+    private static final BufferPoolMXBean directBufferPool = ManagementFactory.getPlatformMXBeans(BufferPoolMXBean.class)
+        .stream()
+        .filter(pool -> pool.getName().equals("direct"))
+        .findFirst()
+        .orElse(null);
+
+    private static void logNativeMemoryStats(String operation, ByteBuffer buffer) {
+        if (buffer != null && buffer.isDirect()) {
+            long bufferSize = buffer.capacity();
+            totalDirectMemoryUsed.addAndGet(bufferSize);
+            
+            if (directBufferPool != null) {
+                LOG.info("%s - Native memory stats: current buffer: %s bytes, total count: %s, total capacity: %s bytes, memory used: %s bytes",
+                    operation,
+                    bufferSize,
+                    directBufferPool.getCount(),
+                    directBufferPool.getTotalCapacity(),
+                    directBufferPool.getMemoryUsed());
+            } else {
+                // Fallback if MXBean not available
+                LOG.info("%s - Direct memory: current buffer: %s bytes, total allocated: %s bytes",
+                    operation, bufferSize, totalDirectMemoryUsed.get());
+            }
+        }
+    }
 
     private final SSLContext sslContext;
     private SSLEngine sslEngine;
@@ -242,20 +268,38 @@ public class TLSConnectionManager implements Closeable {
 
     @Override
     public void close() throws IOException {
+        long freedMemory = 0;
         if (appOutBuffer != null && appOutBuffer.isDirect()) {
+            freedMemory += appOutBuffer.capacity();
             totalDirectMemoryUsed.addAndGet(-appOutBuffer.capacity());
+            LOG.info("Freed appOutBuffer memory: %s bytes", appOutBuffer.capacity());
         }
         if (appInBuffer != null && appInBuffer.isDirect()) {
+            freedMemory += appInBuffer.capacity();
             totalDirectMemoryUsed.addAndGet(-appInBuffer.capacity());
+            LOG.info("Freed appInBuffer memory: %s bytes", appInBuffer.capacity());
         }
         if (networkOutBuffer != null && networkOutBuffer.isDirect()) {
+            freedMemory += networkOutBuffer.capacity();
             totalDirectMemoryUsed.addAndGet(-networkOutBuffer.capacity());
+            LOG.info("Freed networkOutBuffer memory: %s bytes", networkOutBuffer.capacity());
         }
         if (networkInBuffer != null && networkInBuffer.isDirect()) {
+            freedMemory += networkInBuffer.capacity();
             totalDirectMemoryUsed.addAndGet(-networkInBuffer.capacity());
+            LOG.info("Freed networkInBuffer memory: %s bytes", networkInBuffer.capacity());
         }
-        LOG.info("Closing TLS connection - final total direct memory used: %s bytes, actual used: %s bytes",
-            totalDirectMemoryUsed.get(), getDirectBufferSize(null));
+        
+        if (directBufferPool != null) {
+            LOG.info("Closing TLS connection - total memory freed: %s bytes, direct buffer count: %s, total capacity: %s bytes, memory used: %s bytes",
+                freedMemory,
+                directBufferPool.getCount(),
+                directBufferPool.getTotalCapacity(),
+                directBufferPool.getMemoryUsed());
+        } else {
+            LOG.info("Closing TLS connection - total memory freed: %s bytes, final total direct memory used: %s bytes",
+                freedMemory, totalDirectMemoryUsed.get());
+        }
         closeSslEngine();
     }
 
@@ -328,7 +372,7 @@ public class TLSConnectionManager implements Closeable {
         ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
         LOG.info("Allocated application buffer - requested: %s bytes, actual: %s bytes",
             suggestedSize, buffer.capacity());
-        logDirectMemoryUsage("App buffer allocation", buffer);
+        logNativeMemoryStats("App buffer allocation", buffer);
         return buffer;
     }
 
@@ -342,52 +386,8 @@ public class TLSConnectionManager implements Closeable {
         ByteBuffer buffer = ByteBuffer.allocateDirect(requiredSize);
         LOG.info("Allocated network buffer - requested: %s bytes, actual: %s bytes",
             suggestedSize, buffer.capacity());
-        logDirectMemoryUsage("Network buffer allocation", buffer);
+        logNativeMemoryStats("Network buffer allocation", buffer);
         return buffer;
-    }
-
-    private static long getDirectBufferSize(ByteBuffer buffer) {
-        if (!buffer.isDirect()) {
-            return 0;
-        }
-        try {
-            return nioAccess.getDirectBufferPool().getMemoryUsed();
-        } catch (Exception e) {
-            LOG.warn("Failed to get direct buffer size: %s", e.getMessage());
-            return 0;
-        }
-    }
-
-    private void logDirectMemoryUsage(String operation, ByteBuffer buffer) {
-        if (buffer != null && buffer.isDirect()) {
-            long memoryUsed = getDirectBufferSize(buffer);
-            totalDirectMemoryUsed.addAndGet(buffer.capacity());
-            LOG.info("%s - Direct memory: current buffer: %s bytes, total allocated: %s bytes, actual used: %s bytes",
-                operation, buffer.capacity(), totalDirectMemoryUsed.get(), memoryUsed);
-        }
-    }
-
-    private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
-        int oldCapacity = buffer.capacity();
-        ByteBuffer newBuffer;
-        
-        if (suggestedCapacity > buffer.capacity()) {
-            newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
-            LOG.info("Enlarging buffer from %s to %s bytes (suggested capacity)",
-                oldCapacity, suggestedCapacity);
-        } else {
-            // If the suggested capacity is still too small, double the size
-            int newCapacity = buffer.capacity() * 2;
-            newBuffer = ByteBuffer.allocateDirect(newCapacity);
-            LOG.info("Enlarging buffer from %s to %s bytes (doubled capacity)",
-                oldCapacity, newCapacity);
-        }
-        
-        if (buffer.isDirect()) {
-            totalDirectMemoryUsed.addAndGet(-oldCapacity);
-        }
-        logDirectMemoryUsage("Buffer enlarged", newBuffer);
-        return newBuffer;
     }
 
     private void sendNetworkBuffer(SocketChannel socketChannel) throws SSLException {
@@ -433,5 +433,35 @@ public class TLSConnectionManager implements Closeable {
 
     public void resetHandshakeStatus() {
         handshakeSuccessful = new CountDownLatch(1);
+    }
+
+    private static ByteBuffer enlargeBuffer(ByteBuffer buffer, int suggestedCapacity) {
+        int oldCapacity = buffer.capacity();
+        ByteBuffer newBuffer;
+        
+        if (suggestedCapacity > buffer.capacity()) {
+            newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
+            LOG.info("Enlarging buffer from %s to %s bytes (suggested capacity)",
+                oldCapacity, suggestedCapacity);
+        } else {
+            // If the suggested capacity is still too small, double the size
+            int newCapacity = buffer.capacity() * 2;
+            newBuffer = ByteBuffer.allocateDirect(newCapacity);
+            LOG.info("Enlarging buffer from %s to %s bytes (doubled capacity)",
+                oldCapacity, newCapacity);
+        }
+        
+        if (buffer.isDirect()) {
+            totalDirectMemoryUsed.addAndGet(-oldCapacity);
+            if (directBufferPool != null) {
+                LOG.info("Freed buffer memory: %s bytes, current direct buffer count: %s, memory used: %s bytes",
+                    oldCapacity, directBufferPool.getCount(), directBufferPool.getMemoryUsed());
+            } else {
+                LOG.info("Freed buffer memory: %s bytes, remaining total: %s bytes",
+                    oldCapacity, totalDirectMemoryUsed.get());
+            }
+        }
+        logNativeMemoryStats("Buffer enlarged", newBuffer);
+        return newBuffer;
     }
 }
