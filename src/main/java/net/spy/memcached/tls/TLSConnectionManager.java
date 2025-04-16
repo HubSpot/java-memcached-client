@@ -8,14 +8,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
-
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
 
@@ -226,6 +224,7 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void closeSslEngine() {
+        LOG.warn("Closing SSLEngine", new Exception("Stack trace"));
         sslEngine.setEnableSessionCreation(false);
         sslEngine.closeOutbound();
         try {
