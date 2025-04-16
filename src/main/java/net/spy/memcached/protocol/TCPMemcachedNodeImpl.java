@@ -761,6 +761,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
   public final void setupForAuth() {
     if (sslEnabled) {
       tlsConnectionManager.resetHandshakeStatus();
+      return;
     }
     if (shouldAuth) {
       authLatch = new CountDownLatch(1);
