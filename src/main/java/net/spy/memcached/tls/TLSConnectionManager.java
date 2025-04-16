@@ -1,5 +1,6 @@
 package net.spy.memcached.tls;
 
+import io.netty.util.internal.PlatformDependent;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -63,12 +64,18 @@ public class TLSConnectionManager implements Closeable {
     }
 
     private void cleanupBuffers() {
-        appOutBuffer = null;
-        appInBuffer = null;
-        networkOutBuffer = null;
-        networkInBuffer = null;
-        // Let the garbage collector handle the direct buffer cleanup
-        System.gc();
+        if (appOutBuffer != null) {
+            cleanDirectBuffer(appOutBuffer);
+        }
+        if (appInBuffer != null) {
+            cleanDirectBuffer(appInBuffer);
+        }
+        if (networkOutBuffer != null) {
+            cleanDirectBuffer(networkOutBuffer);
+        }
+        if (networkInBuffer != null) {
+            cleanDirectBuffer(networkInBuffer);
+        }
     }
 
     private void initBuffers(SSLSession session) {
@@ -373,5 +380,12 @@ public class TLSConnectionManager implements Closeable {
 
     public void resetHandshakeStatus() {
         handshakeSuccessful = new CountDownLatch(1);
+    }
+
+    public static void cleanDirectBuffer(ByteBuffer buffer) {
+        if (buffer == null || !buffer.isDirect()) {
+            return; // Only direct buffers need explicit cleanup
+        }
+        PlatformDependent.freeDirectBuffer(buffer);
     }
 }

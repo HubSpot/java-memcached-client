@@ -61,6 +61,11 @@
             <artifactId>failsafe</artifactId>
             <version>0.9.5</version>
         </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-common</artifactId>
+            <version>4.1.117.Final</version>
+        </dependency>
 
         <!-- Optional Dependencies at Runtime -->
         <dependency>
