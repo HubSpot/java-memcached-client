@@ -768,10 +768,12 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
       assert (inputQueue.size() == 0);
       setupResend();
     } else if (sslEnabled) {
-        tlsConnectionManager.resetHandshakeStatus();
+      tlsConnectionManager.resetHandshakeStatus();
+      setupResend();
     } else {
       authLatch = new CountDownLatch(0);
     }
+
   }
 
   @Override
