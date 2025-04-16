@@ -1,14 +1,15 @@
 package net.spy.memcached.tls;
 
-import io.netty.util.internal.PlatformDependent;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.Map;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -22,12 +23,16 @@ public class TLSConnectionManager implements Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(TLSConnectionManager.class);
 
+    // Buffer pool for reusing direct buffers
+    private static final Map<Integer, List<ByteBuffer>> BUFFER_POOL = new ConcurrentHashMap<>();
+    private static final int MAX_POOL_SIZE_PER_SIZE = 8;
+    private static final int MAX_BUFFER_SIZE = 1024 * 1024; // 1MB max buffer size
+
     private final SSLContext sslContext;
     private SSLEngine sslEngine;
 
     public static final int WRAP_STATUS_BUFFER_UNDERFLOW = -1;
     public static final int WRAP_STATUS_BUFFER_OVERFLOW = -2;
-
 
     private SSLSession currentSession;
 
@@ -63,29 +68,86 @@ public class TLSConnectionManager implements Closeable {
         sslEngine.setUseClientMode(true);
     }
 
+    private void releaseBufferToPool(ByteBuffer buffer) {
+        if (buffer == null || !buffer.isDirect()) {
+            return;
+        }
+        
+        int capacity = buffer.capacity();
+        if (capacity > MAX_BUFFER_SIZE) {
+            // Too large, don't pool it
+            buffer = null;
+            return;
+        }
+        
+        // Clear and reset the buffer for reuse
+        buffer.clear();
+        
+        // Add to pool if there's space
+        List<ByteBuffer> bufferList = BUFFER_POOL.computeIfAbsent(capacity, k -> new ArrayList<>());
+        synchronized (bufferList) {
+            if (bufferList.size() < MAX_POOL_SIZE_PER_SIZE) {
+                bufferList.add(buffer);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Added buffer of size %d to pool, pool size: %d", capacity, bufferList.size());
+                }
+            }
+        }
+    }
+
+    private ByteBuffer getBufferFromPool(int capacity) {
+        List<ByteBuffer> bufferList = BUFFER_POOL.get(capacity);
+        if (bufferList != null) {
+            synchronized (bufferList) {
+                if (!bufferList.isEmpty()) {
+                    ByteBuffer buffer = bufferList.remove(bufferList.size() - 1);
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("Reused buffer of size %d from pool, pool size: %d", capacity, bufferList.size());
+                    }
+                    return buffer;
+                }
+            }
+        }
+        // No buffer available in pool, allocate a new one
+        return ByteBuffer.allocateDirect(capacity);
+    }
+
     private void cleanupBuffers() {
         if (appOutBuffer != null) {
-            cleanDirectBuffer(appOutBuffer);
+            releaseBufferToPool(appOutBuffer);
+            appOutBuffer = null;
         }
         if (appInBuffer != null) {
-            cleanDirectBuffer(appInBuffer);
+            releaseBufferToPool(appInBuffer);
+            appInBuffer = null;
         }
         if (networkOutBuffer != null) {
-            cleanDirectBuffer(networkOutBuffer);
+            releaseBufferToPool(networkOutBuffer);
+            networkOutBuffer = null;
         }
         if (networkInBuffer != null) {
-            cleanDirectBuffer(networkInBuffer);
+            releaseBufferToPool(networkInBuffer);
+            networkInBuffer = null;
         }
     }
 
     private void initBuffers(SSLSession session) {
         // Clean up any existing buffers first
         cleanupBuffers();
-
-        appOutBuffer = allocateAppBuffer();
-        appInBuffer = allocateAppBuffer();
-        networkOutBuffer = allocateNetworkBuffer();
-        networkInBuffer = allocateNetworkBuffer();
+        
+        int appBufferSize = session.getApplicationBufferSize();
+        int netBufferSize = session.getPacketBufferSize();
+        
+        appOutBuffer = getBufferFromPool(appBufferSize);
+        appInBuffer = getBufferFromPool(appBufferSize);
+        networkOutBuffer = getBufferFromPool(netBufferSize);
+        networkInBuffer = getBufferFromPool(netBufferSize);
+        
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Initialized buffers: appOut=%d, appIn=%d, netOut=%d, netIn=%d bytes",
+                      appOutBuffer.capacity(), appInBuffer.capacity(), 
+                      networkOutBuffer.capacity(), networkInBuffer.capacity());
+        }
     }
 
     public boolean doHandshake(SocketChannel socketChannel) throws IOException {
@@ -305,38 +367,43 @@ public class TLSConnectionManager implements Closeable {
     public ByteBuffer allocateAppBuffer(int suggestedSize) {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getApplicationBufferSize(), suggestedSize);
-        // allocateDirect() to keep all bytes contiguous in memory
-        return ByteBuffer.allocateDirect(requiredSize);
+        return getBufferFromPool(requiredSize);
     }
 
     public ByteBuffer allocateNetworkBuffer() {
-        return ByteBuffer.allocateDirect(0);
+        ensureSslEngineInitialized(false);
+        return getBufferFromPool(sslEngine.getSession().getPacketBufferSize());
     }
 
     public ByteBuffer allocateNetworkBuffer(int suggestedSize) {
         ensureSslEngineInitialized(false);
         int requiredSize = Math.max(sslEngine.getSession().getPacketBufferSize(), suggestedSize);
-        // allocateDirect() to keep all bytes contiguous in memory
-        return ByteBuffer.allocateDirect(requiredSize);
+        return getBufferFromPool(requiredSize);
     }
 
-    private static ByteBuffer enlargeBuffer(ByteBuffer oldBuffer, int suggestedCapacity) {
-        ByteBuffer newBuffer;
+    private ByteBuffer enlargeBuffer(ByteBuffer oldBuffer, int suggestedCapacity) {
+        // Cap buffer size to prevent excessive memory usage
+        int newCapacity;
         if (suggestedCapacity > oldBuffer.capacity()) {
-            newBuffer = ByteBuffer.allocateDirect(suggestedCapacity);
+            newCapacity = Math.min(suggestedCapacity, MAX_BUFFER_SIZE);
         } else {
-            // If the suggested capacity is still too small, double the size
-            newBuffer = ByteBuffer.allocateDirect(oldBuffer.capacity() * 2);
+            // If the suggested capacity is still too small, double the size (with max limit)
+            newCapacity = Math.min(oldBuffer.capacity() * 2, MAX_BUFFER_SIZE);
         }
 
+        ByteBuffer newBuffer = getBufferFromPool(newCapacity);
+        
         // Copy any remaining data from the old buffer to the new one
         oldBuffer.flip();
         newBuffer.put(oldBuffer);
-
-        // Let the garbage collector handle the cleanup of the old buffer
-        oldBuffer = null;
-        System.gc();
-
+        
+        // Release the old buffer back to the pool
+        releaseBufferToPool(oldBuffer);
+        
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Enlarged buffer from %d to %d bytes", oldBuffer.capacity(), newBuffer.capacity());
+        }
+        
         return newBuffer;
     }
 
@@ -382,10 +449,12 @@ public class TLSConnectionManager implements Closeable {
         handshakeSuccessful = new CountDownLatch(1);
     }
 
-    public static void cleanDirectBuffer(ByteBuffer buffer) {
-        if (buffer == null || !buffer.isDirect()) {
-            return; // Only direct buffers need explicit cleanup
+    // Static cleanup method to release all pooled buffers 
+    public static void releaseAllPooledBuffers() {
+        BUFFER_POOL.clear();
+        System.gc(); // Encourage GC to clean up the released buffers
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Released all pooled buffers");
         }
-        PlatformDependent.freeDirectBuffer(buffer);
     }
 }
