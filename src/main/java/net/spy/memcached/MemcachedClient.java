@@ -50,8 +50,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.auth.AuthThreadMonitor;
-import net.spy.memcached.ssl.SSLConnectionCallback;
-import net.spy.memcached.ssl.SSLThreadMonitor;
 import net.spy.memcached.compat.SpyObject;
 import net.spy.memcached.internal.BulkFuture;
 import net.spy.memcached.internal.BulkGetFuture;
@@ -77,6 +75,8 @@ import net.spy.memcached.ops.StoreOperation;
 import net.spy.memcached.ops.StoreType;
 import net.spy.memcached.ops.TimedOutOperationStatus;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
+import net.spy.memcached.ssl.SSLConnectionCallback;
+import net.spy.memcached.ssl.SSLThreadMonitor;
 import net.spy.memcached.transcoders.TranscodeService;
 import net.spy.memcached.transcoders.Transcoder;
 import net.spy.memcached.util.StringUtils;
@@ -306,8 +306,49 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
     return mconn.broadcastOperation(of, nodes);
   }
 
-  private <T> OperationFuture<Boolean> asyncStore(StoreType storeType,
-                                                  String key, int exp, T value, Transcoder<T> tc) {
+  /**
+   * Check if a specific node is ready for operations.
+   * A node is considered ready if it's active and not in SSL handshake.
+   *
+   * @param node the node to check
+   * @return true if the node is ready for operations
+   */
+  public boolean isNodeReady(MemcachedNode node) {
+    return node.isActive() && 
+           (!connFactory.getSslEnabled() || !sslMonitor.isHandshaking(node));
+  }
+
+  /**
+   * Get a collection of all ready nodes.
+   * A node is considered ready if it's active and not in SSL handshake.
+   *
+   * @return collection of ready nodes
+   */
+  public Collection<MemcachedNode> getReadyNodes() {
+    Collection<MemcachedNode> allNodes = mconn.getLocator().getAll();
+    List<MemcachedNode> readyNodes = new ArrayList<>(allNodes.size());
+    
+    for (MemcachedNode node : allNodes) {
+      if (isNodeReady(node)) {
+        readyNodes.add(node);
+      }
+    }
+    
+    return readyNodes;
+  }
+
+  public <T> OperationFuture<Boolean> asyncStore(StoreType storeType,
+                                                String key, int exp, T value, Transcoder<T> tc) {
+    // Check if we have any ready nodes before proceeding
+    Collection<MemcachedNode> readyNodes = getReadyNodes();
+    if (readyNodes.isEmpty() && !shuttingDown) {
+      // If no nodes are ready and we're not shutting down,
+      // log a warning but still proceed with the operation
+      // (it will be queued until nodes are ready)
+      getLogger().warn("No ready nodes available for store operation");
+    }
+    
+    // Rest of the implementation remains the same
     CachedData co = tc.encode(value);
     final CountDownLatch latch = new CountDownLatch(1);
     final OperationFuture<Boolean> rv =

@@ -23,8 +23,11 @@
 
 package net.spy.memcached.ssl;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import net.spy.memcached.MemcachedConnection;
 import net.spy.memcached.MemcachedNode;
 import net.spy.memcached.compat.SpyObject;
@@ -41,6 +44,36 @@ public class SSLThreadMonitor extends SpyObject {
   private final int retryDelayMillis;
   private SSLConnectionCallback callback;
   private volatile boolean shuttingDown = false;
+  
+  // Keep track of nodes that are currently in handshake process
+  private final Set<MemcachedNode> nodesInHandshake = 
+      Collections.newSetFromMap(new ConcurrentHashMap<MemcachedNode, Boolean>());
+
+  /**
+   * Statistics for SSL handshakes.
+   * This can be accessed to monitor handshake attempts, successes, and failures.
+   */
+  private final SSLHandshakeStats stats = new SSLHandshakeStats();
+  
+  /**
+   * Get the SSL handshake statistics.
+   * 
+   * @return the SSL handshake statistics
+   */
+  public SSLHandshakeStats getStats() {
+    return stats;
+  }
+
+  /**
+   * Get the current attempt count for a node.
+   * 
+   * @param node the node to check
+   * @return the current attempt count from statistics
+   */
+  public int getAttemptCount(MemcachedNode node) {
+    SSLHandshakeStats.NodeStats nodeStats = stats.getNodeStats(node.getSocketAddress());
+    return nodeStats != null ? nodeStats.getAttempts() : 0;
+  }
 
   /**
    * Create an SSL Thread Monitor with default settings.
@@ -88,6 +121,16 @@ public class SSLThreadMonitor extends SpyObject {
   }
 
   /**
+   * Check if a node is currently in SSL handshake process.
+   * 
+   * @param node the node to check
+   * @return true if the node is currently in handshake process
+   */
+  public boolean isHandshaking(MemcachedNode node) {
+    return nodesInHandshake.contains(node);
+  }
+
+  /**
    * Start SSL handshake for a connection.
    * This is typically used by a MemcachedNode after a connection
    * has been established to initiate the SSL handshake.
@@ -106,8 +149,11 @@ public class SSLThreadMonitor extends SpyObject {
       return;
     }
     
+    // Mark this node as in handshake process
+    nodesInHandshake.add(node);
+    
     interruptOldSSL(node);
-    SSLThread newSSLThread = new SSLThread(node, maxRetryCount, retryDelayMillis);
+    SSLThread newSSLThread = new SSLThread(node);
     nodeMap.put(node, newSSLThread);
     newSSLThread.start();
   }
@@ -146,26 +192,26 @@ public class SSLThreadMonitor extends SpyObject {
    */
   private class SSLThread extends Thread {
     private final MemcachedNode node;
-    private final int maxRetries;
-    private final int retryDelay;
-    private int attemptCount;
 
-    public SSLThread(MemcachedNode n, int maxRetries, int retryDelay) {
+    public SSLThread(MemcachedNode n) {
       super("SSLThread for " + n.getSocketAddress().toString());
       node = n;
-      this.maxRetries = maxRetries;
-      this.retryDelay = retryDelay;
-      attemptCount = 0;
       setDaemon(true);
     }
 
     @Override
     public void run() {
       try {
-        while (attemptCount < maxRetries && !Thread.interrupted() && !shuttingDown) {
-          attemptCount++;
+        for (int attemptCount = 1; attemptCount <= maxRetryCount; attemptCount++) {
+          if (Thread.interrupted() || shuttingDown) {
+            break;
+          }
+          
+          // Record attempt in stats
+          stats.recordAttempt(node.getSocketAddress());
+          
           getLogger().info("SSL handshake attempt %d/%d for %s", 
-              attemptCount, maxRetries, node);
+              attemptCount, maxRetryCount, node);
           
           try {
             // Attempt the SSL handshake
@@ -173,64 +219,45 @@ public class SSLThreadMonitor extends SpyObject {
             
             if (success) {
               getLogger().info("SSL handshake succeeded for %s", node);
-              // Handshake successful, remove from map and exit
-              synchronized (SSLThreadMonitor.this) {
-                nodeMap.remove(node);
-                if (callback != null && !shuttingDown) {
-                  callback.onHandshakeSuccess(node);
-                }
-              }
-              return;
-            } else if (attemptCount >= maxRetries || shuttingDown) {
-              getLogger().warn("SSL handshake failed after %d attempts for %s", 
-                  attemptCount, node);
-              // Only notify client if we're not already shutting down
-              synchronized (SSLThreadMonitor.this) {
-                if (callback != null && !shuttingDown) {
-                  callback.onHandshakeFailure(node);
-                }
-              }
+              stats.recordSuccess(node.getSocketAddress());
+              notifySuccess();
               return;
             }
             
-            // Check shutdown state before waiting
-            if (shuttingDown) {
+            if (attemptCount >= maxRetryCount || shuttingDown) {
+              getLogger().warn("SSL handshake failed after %d attempts for %s", 
+                  attemptCount, node);
+              stats.recordFailure(node.getSocketAddress());
+              notifyFailure();
               return;
             }
             
             // Wait before retrying
-            Thread.sleep(retryDelay);
+            if (!shuttingDown) {
+              Thread.sleep(retryDelayMillis);
+            }
           } catch (Exception e) {
             getLogger().warn("Exception during SSL handshake for %s: %s", 
                 node, e.getMessage());
+            stats.recordFailure(node.getSocketAddress());
             
-            if (attemptCount >= maxRetries || shuttingDown) {
+            if (attemptCount >= maxRetryCount || shuttingDown) {
               getLogger().warn("SSL handshake failed after %d attempts for %s", 
                   attemptCount, node);
-              // Only notify client if we're not already shutting down
-              synchronized (SSLThreadMonitor.this) {
-                if (callback != null && !shuttingDown) {
-                  callback.onHandshakeFailure(node);
-                }
-              }
+              notifyFailure();
               return;
             }
             
-            // Check shutdown state before waiting
-            if (shuttingDown) {
-              return;
+            // Wait before retrying if not shutting down
+            if (!shuttingDown) {
+              Thread.sleep(retryDelayMillis);
             }
-            
-            // Wait before retrying
-            Thread.sleep(retryDelay);
           }
         }
       } catch (InterruptedException e) {
         getLogger().debug("SSL handshake thread interrupted for %s", node);
       } finally {
-        synchronized (SSLThreadMonitor.this) {
-          nodeMap.remove(node);
-        }
+        cleanupThread();
       }
     }
     
@@ -243,6 +270,31 @@ public class SSLThreadMonitor extends SpyObject {
       } catch (Exception e) {
         getLogger().warn("Exception during SSL handshake: %s", e.getMessage());
         return false;
+      }
+    }
+    
+    private void notifySuccess() {
+      synchronized (SSLThreadMonitor.this) {
+        nodeMap.remove(node);
+        nodesInHandshake.remove(node);
+        if (callback != null && !shuttingDown) {
+          callback.onHandshakeSuccess(node);
+        }
+      }
+    }
+    
+    private void notifyFailure() {
+      synchronized (SSLThreadMonitor.this) {
+        if (callback != null && !shuttingDown) {
+          callback.onHandshakeFailure(node);
+        }
+      }
+    }
+    
+    private void cleanupThread() {
+      synchronized (SSLThreadMonitor.this) {
+        nodeMap.remove(node);
+        nodesInHandshake.remove(node);
       }
     }
   }
