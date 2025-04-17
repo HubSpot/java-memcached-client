@@ -52,6 +52,7 @@ public class SSLHandshakeStats {
         private final AtomicLong lastAttemptTimestamp = new AtomicLong(0);
         private final AtomicLong lastSuccessTimestamp = new AtomicLong(0);
         private final AtomicLong lastFailureTimestamp = new AtomicLong(0);
+        private volatile Throwable lastException = null;
         
         /**
          * Create statistics for a node.
@@ -84,6 +85,25 @@ public class SSLHandshakeStats {
         public void recordFailure() {
             failures.incrementAndGet();
             lastFailureTimestamp.set(System.currentTimeMillis());
+        }
+        
+        /**
+         * Record a handshake failure with the exception that caused it.
+         * 
+         * @param e the exception that caused the failure
+         */
+        public void recordFailure(Throwable e) {
+            recordFailure();
+            this.lastException = e;
+        }
+        
+        /**
+         * Get the last exception that caused a handshake failure.
+         * 
+         * @return the last exception, or null if no exceptions have been recorded
+         */
+        public Throwable getLastException() {
+            return lastException;
         }
         
         /**
@@ -196,6 +216,20 @@ public class SSLHandshakeStats {
         failedHandshakes.incrementAndGet();
         NodeStats stats = getOrCreateNodeStats(address);
         stats.recordFailure();
+        return stats;
+    }
+    
+    /**
+     * Record a failed handshake for a node.
+     * 
+     * @param address the socket address of the node
+     * @param e the exception that caused the failure
+     * @return the updated node statistics
+     */
+    public NodeStats recordFailure(SocketAddress address, Throwable e) {
+        failedHandshakes.incrementAndGet();
+        NodeStats stats = getOrCreateNodeStats(address);
+        stats.recordFailure(e);
         return stats;
     }
     
