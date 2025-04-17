@@ -50,6 +50,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.auth.AuthThreadMonitor;
+import net.spy.memcached.ssl.SSLConnectionCallback;
+import net.spy.memcached.ssl.SSLThreadMonitor;
 import net.spy.memcached.compat.SpyObject;
 import net.spy.memcached.internal.BulkFuture;
 import net.spy.memcached.internal.BulkGetFuture;
@@ -137,7 +139,7 @@ import net.spy.memcached.util.StringUtils;
  * System Property to "true".</p>
  */
 public class MemcachedClient extends SpyObject implements MemcachedClientIF,
-    ConnectionObserver {
+    ConnectionObserver, SSLConnectionCallback {
 
   protected volatile boolean shuttingDown;
 
@@ -156,6 +158,8 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
   protected final ConnectionFactory connFactory;
 
   protected final AuthThreadMonitor authMonitor = new AuthThreadMonitor();
+
+  protected final SSLThreadMonitor sslMonitor = new SSLThreadMonitor();
 
   protected final ExecutorService executorService;
 
@@ -214,6 +218,9 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
     if (authDescriptor != null) {
       addObserver(this);
     }
+    
+    // Set this client as the callback for SSL connections
+    sslMonitor.setCallback(this);
   }
 
   /**
@@ -2519,6 +2526,8 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
         tcService.shutdown();
         //terminate all pending Auth Threads
         authMonitor.interruptAllPendingAuth();
+        //terminate all pending SSL Threads
+        sslMonitor.interruptAllPendingSSL();
       } catch (IOException e) {
         getLogger().warn("exception while shutting down", e);
       }
@@ -2599,7 +2608,12 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
 
   @Override
   public void connectionEstablished(SocketAddress sa, int reconnectCount) {
-    if (!connFactory.getSslEnabled() && authDescriptor != null) {
+    if (connFactory.getSslEnabled()) {
+      // For SSL connections, use the SSL monitor to handle the handshake
+      sslMonitor.secureConnection(mconn, findNode(sa));
+    }
+    
+    if (authDescriptor != null) {
       if (authDescriptor.authThresholdReached()) {
         shutdown();
       }
@@ -2655,5 +2669,21 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
   @Override
   public String toString() {
     return connFactory.toString();
+  }
+
+  /**
+   * Implementation of SSLConnectionCallback
+   */
+  @Override
+  public void onHandshakeFailure(MemcachedNode node) {
+    // Queue the node for reconnection instead of shutting down
+    if (!shuttingDown) {
+      mconn.queueReconnect(node);
+    }
+  }
+
+  @Override
+  public void onHandshakeSuccess(MemcachedNode node) {
+    // No special handling needed on success
   }
 }
