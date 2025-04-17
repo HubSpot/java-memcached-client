@@ -2501,6 +2501,10 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
       return false;
     }
     shuttingDown = true;
+    
+    // Mark the SSL monitor as shutting down first
+    sslMonitor.setShuttingDown();
+    
     String baseName = mconn.getName();
     mconn.setName(baseName + " - SHUTTING DOWN");
     boolean rv = true;
@@ -2676,9 +2680,12 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
    */
   @Override
   public void onHandshakeFailure(MemcachedNode node) {
-    // Queue the node for reconnection instead of shutting down
-    if (!shuttingDown) {
+    // Queue the node for reconnection instead of shutting down, but only if not already shutting down
+    if (!shuttingDown && !sslMonitor.isShuttingDown()) {
+      getLogger().info("Queueing reconnect for node %s after SSL handshake failure", node);
       mconn.queueReconnect(node);
+    } else {
+      getLogger().info("Skipping reconnect for node %s - shutdown in progress", node);
     }
   }
 

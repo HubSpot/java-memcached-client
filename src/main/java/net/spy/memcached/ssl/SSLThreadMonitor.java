@@ -40,6 +40,7 @@ public class SSLThreadMonitor extends SpyObject {
   private final int maxRetryCount;
   private final int retryDelayMillis;
   private SSLConnectionCallback callback;
+  private volatile boolean shuttingDown = false;
 
   /**
    * Create an SSL Thread Monitor with default settings.
@@ -70,6 +71,23 @@ public class SSLThreadMonitor extends SpyObject {
   }
 
   /**
+   * Set monitor in shutdown state.
+   * This prevents new connections from being attempted.
+   */
+  public void setShuttingDown() {
+    shuttingDown = true;
+  }
+
+  /**
+   * Check if monitor is in shutdown state.
+   * 
+   * @return true if the monitor is shutting down
+   */
+  public boolean isShuttingDown() {
+    return shuttingDown;
+  }
+
+  /**
    * Start SSL handshake for a connection.
    * This is typically used by a MemcachedNode after a connection
    * has been established to initiate the SSL handshake.
@@ -82,6 +100,12 @@ public class SSLThreadMonitor extends SpyObject {
    */
   public synchronized void secureConnection(MemcachedConnection conn, 
       MemcachedNode node) {
+    // Don't start new handshakes if we're shutting down
+    if (shuttingDown) {
+      getLogger().info("Skipping SSL handshake attempt for %s - shutdown in progress", node);
+      return;
+    }
+    
     interruptOldSSL(node);
     SSLThread newSSLThread = new SSLThread(node, maxRetryCount, retryDelayMillis);
     nodeMap.put(node, newSSLThread);
@@ -95,6 +119,7 @@ public class SSLThreadMonitor extends SpyObject {
    * running, terminate them so that the java process can exit gracefully.
    */
   public synchronized void interruptAllPendingSSL() {
+    shuttingDown = true;
     for (SSLThread toStop : nodeMap.values()) {
       if (toStop.isAlive()) {
         getLogger().warn("Connection shutdown in progress - interrupting "
@@ -137,7 +162,7 @@ public class SSLThreadMonitor extends SpyObject {
     @Override
     public void run() {
       try {
-        while (attemptCount < maxRetries && !Thread.interrupted()) {
+        while (attemptCount < maxRetries && !Thread.interrupted() && !shuttingDown) {
           attemptCount++;
           getLogger().info("SSL handshake attempt %d/%d for %s", 
               attemptCount, maxRetries, node);
@@ -151,18 +176,25 @@ public class SSLThreadMonitor extends SpyObject {
               // Handshake successful, remove from map and exit
               synchronized (SSLThreadMonitor.this) {
                 nodeMap.remove(node);
-                if (callback != null) {
+                if (callback != null && !shuttingDown) {
                   callback.onHandshakeSuccess(node);
                 }
               }
               return;
-            } else if (attemptCount >= maxRetries) {
+            } else if (attemptCount >= maxRetries || shuttingDown) {
               getLogger().warn("SSL handshake failed after %d attempts for %s", 
                   attemptCount, node);
-              // Use the callback to handle failure
-              if (callback != null) {
-                callback.onHandshakeFailure(node);
+              // Only notify client if we're not already shutting down
+              synchronized (SSLThreadMonitor.this) {
+                if (callback != null && !shuttingDown) {
+                  callback.onHandshakeFailure(node);
+                }
               }
+              return;
+            }
+            
+            // Check shutdown state before waiting
+            if (shuttingDown) {
               return;
             }
             
@@ -172,12 +204,20 @@ public class SSLThreadMonitor extends SpyObject {
             getLogger().warn("Exception during SSL handshake for %s: %s", 
                 node, e.getMessage());
             
-            if (attemptCount >= maxRetries) {
+            if (attemptCount >= maxRetries || shuttingDown) {
               getLogger().warn("SSL handshake failed after %d attempts for %s", 
                   attemptCount, node);
-              if (callback != null) {
-                callback.onHandshakeFailure(node);
+              // Only notify client if we're not already shutting down
+              synchronized (SSLThreadMonitor.this) {
+                if (callback != null && !shuttingDown) {
+                  callback.onHandshakeFailure(node);
+                }
               }
+              return;
+            }
+            
+            // Check shutdown state before waiting
+            if (shuttingDown) {
               return;
             }
             
@@ -196,6 +236,9 @@ public class SSLThreadMonitor extends SpyObject {
     
     private boolean attemptSSLHandshake() {
       try {
+        if (shuttingDown || node.getChannel() == null) {
+          return false;
+        }
         return node.executeTlsHandshake();
       } catch (Exception e) {
         getLogger().warn("Exception during SSL handshake: %s", e.getMessage());
