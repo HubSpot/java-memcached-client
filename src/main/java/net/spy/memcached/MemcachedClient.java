@@ -2599,7 +2599,7 @@ public class MemcachedClient extends SpyObject implements MemcachedClientIF,
 
   @Override
   public void connectionEstablished(SocketAddress sa, int reconnectCount) {
-    if (authDescriptor != null) {
+    if (!connFactory.getSslEnabled() && authDescriptor != null) {
       if (authDescriptor.authThresholdReached()) {
         shutdown();
       }
