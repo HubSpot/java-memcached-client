@@ -8,14 +8,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
-
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
 
@@ -209,7 +207,6 @@ public class TLSConnectionManager implements Closeable {
                     appInBuffer.flip();
                     return new UnwrapResult(appInBuffer, unwrapResult);
                 case CLOSED:
-                    this.close();
                     throw new IOException(sslEngine.getPeerHost() + " - TLS Connection is closed");
                 default:
                     // This might get hit if the Status enum ever gets expanded, but for now, we should not hit this. Case
