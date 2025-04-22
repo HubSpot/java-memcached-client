@@ -216,4 +216,30 @@ public interface ConnectionFactory {
    * @return The SSLContext
    */
   Optional<SSLContext> getSslContext();
+
+  /**
+   * Get the maximum buffer size for TLS connections.
+   * 
+   * <p>
+   * This setting determines the maximum size (in bytes) that a buffer can grow to
+   * during TLS communications. Larger values allow for handling more data at once
+   * but consume more memory. The default is 1MB.
+   * </p>
+   * 
+   * @return the maximum buffer size in bytes
+   */
+  int getTLSMaxBufferSize();
+  
+  /**
+   * Get the maximum number of buffers per size that can be stored in the TLS buffer pool.
+   * 
+   * <p>
+   * This setting controls how many buffers of each capacity size can be cached for reuse.
+   * Higher values reduce allocation overhead for many concurrent connections,
+   * but consume more memory. The default is 64 for large clusters.
+   * </p>
+   * 
+   * @return the maximum number of buffers per capacity size
+   */
+  int getTLSMaxPoolSizePerCapacity();
 }

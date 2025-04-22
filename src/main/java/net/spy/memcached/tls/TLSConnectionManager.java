@@ -16,8 +16,10 @@ import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
+import net.spy.memcached.ConnectionFactory;
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
+import net.spy.memcached.DefaultConnectionFactory;
 
 public class TLSConnectionManager implements Closeable {
 
@@ -25,8 +27,10 @@ public class TLSConnectionManager implements Closeable {
 
     // Buffer pool for reusing direct buffers
     private static final Map<Integer, List<ByteBuffer>> BUFFER_POOL = new ConcurrentHashMap<>();
-    private static final int MAX_POOL_SIZE_PER_CAPACITY = 8;
-    private static final int MAX_BUFFER_SIZE = 1024 * 1024; // 1MB max buffer size
+    
+    // Per-instance configuration values
+    private final int maxPoolSizePerCapacity;
+    private final int maxBufferSize;
 
     private final SSLContext sslContext;
     private SSLEngine sslEngine;
@@ -43,9 +47,19 @@ public class TLSConnectionManager implements Closeable {
 
     private CountDownLatch handshakeSuccessful;
 
-    public TLSConnectionManager(SSLContext sslContext) {
+    /**
+     * Create a new TLS Connection Manager.
+     * 
+     * @param sslContext the SSLContext to use
+     * @param connectionFactory the connection factory providing buffer configuration
+     */
+    public TLSConnectionManager(SSLContext sslContext, ConnectionFactory connectionFactory) {
         this.sslContext = sslContext;
         this.handshakeSuccessful = new CountDownLatch(1);
+        
+        // Set buffer pool configuration from connection factory
+        this.maxBufferSize = connectionFactory.getTLSMaxBufferSize();
+        this.maxPoolSizePerCapacity = connectionFactory.getTLSMaxPoolSizePerCapacity();
     }
 
     private void initSslEngine() {
@@ -74,7 +88,7 @@ public class TLSConnectionManager implements Closeable {
         }
         
         int capacity = buffer.capacity();
-        if (capacity > MAX_BUFFER_SIZE) {
+        if (capacity > maxBufferSize) {
             // Too large, don't pool it
             buffer = null;
             return;
@@ -86,7 +100,7 @@ public class TLSConnectionManager implements Closeable {
         // Add to pool if there's space
         List<ByteBuffer> bufferList = BUFFER_POOL.computeIfAbsent(capacity, k -> new ArrayList<>());
         synchronized (bufferList) {
-            if (bufferList.size() < MAX_POOL_SIZE_PER_CAPACITY) {
+            if (bufferList.size() < maxPoolSizePerCapacity) {
                 bufferList.add(buffer);
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("Added buffer of size %d to pool, pool size: %d", capacity, bufferList.size());
@@ -385,10 +399,10 @@ public class TLSConnectionManager implements Closeable {
         // Cap buffer size to prevent excessive memory usage
         int newCapacity;
         if (suggestedCapacity > oldBuffer.capacity()) {
-            newCapacity = Math.min(suggestedCapacity, MAX_BUFFER_SIZE);
+            newCapacity = Math.min(suggestedCapacity, maxBufferSize);
         } else {
             // If the suggested capacity is still too small, double the size (with max limit)
-            newCapacity = Math.min(oldBuffer.capacity() * 2, MAX_BUFFER_SIZE);
+            newCapacity = Math.min(oldBuffer.capacity() * 2, maxBufferSize);
         }
 
         ByteBuffer newBuffer = getBufferFromPool(newCapacity);

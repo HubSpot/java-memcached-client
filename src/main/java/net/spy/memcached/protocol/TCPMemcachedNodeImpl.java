@@ -111,7 +111,7 @@ public abstract class TCPMemcachedNodeImpl extends SpyObject implements
     if (sslEnabled && sslContext.isEmpty()) {
       throw new IllegalStateException("SSL Context was empty, but SSL was enabled");
     }
-    this.tlsConnectionManager = sslEnabled ? new TLSConnectionManager(sslContext.get()) : null;
+    this.tlsConnectionManager = sslEnabled ? new TLSConnectionManager(sslContext.get(), fact) : null;
 
     setChannel(c);
     // Since these buffers are allocated rarely (only on client creation
