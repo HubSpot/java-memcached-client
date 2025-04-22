@@ -135,6 +135,16 @@ public class DefaultConnectionFactory extends SpyObject implements
    * is written in milliseconds.
    */
   public static final long DEFAULT_AUTH_WAIT_TIME = 1000;
+  
+  /**
+   * The default maximum buffer size for TLS connections (1MB).
+   */
+  public static final int DEFAULT_TLS_MAX_BUFFER_SIZE = 1024 * 1024;
+  
+  /**
+   * The default maximum number of buffers per capacity in the TLS buffer pool.
+   */
+  public static final int DEFAULT_TLS_MAX_POOL_SIZE_PER_CAPACITY = 64;
 
   protected final int opQueueLen;
   private final int readBufSize;
@@ -465,6 +475,16 @@ public class DefaultConnectionFactory extends SpyObject implements
 
   public boolean circuitBreakerEnabled() {
     return DEFAULT_CIRCUIT_BREAKER_ENABLED;
+  }
+
+  @Override
+  public int getTLSMaxBufferSize() {
+    return DEFAULT_TLS_MAX_BUFFER_SIZE;
+  }
+  
+  @Override
+  public int getTLSMaxPoolSizePerCapacity() {
+    return DEFAULT_TLS_MAX_POOL_SIZE_PER_CAPACITY;
   }
 
   @Override

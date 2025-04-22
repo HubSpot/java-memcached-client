@@ -90,6 +90,8 @@ public class ConnectionFactoryBuilder {
   protected long authWaitTime = DefaultConnectionFactory.DEFAULT_AUTH_WAIT_TIME;
   protected boolean sslEnabled = false;
   protected Optional<SSLContext> sslContext = Optional.empty();
+  protected int tlsMaxBufferSize = DefaultConnectionFactory.DEFAULT_TLS_MAX_BUFFER_SIZE;
+  protected int tlsMaxPoolSizePerCapacity = DefaultConnectionFactory.DEFAULT_TLS_MAX_POOL_SIZE_PER_CAPACITY;
 
   /**
    * Set the operation queue factory.
@@ -380,6 +382,40 @@ public class ConnectionFactoryBuilder {
   }
 
   /**
+   * Set the maximum buffer size for TLS connections.
+   * 
+   * <p>
+   * This setting determines the maximum size (in bytes) that a buffer can grow to
+   * during TLS communications. Larger values allow for handling more data at once
+   * but consume more memory. The default is 1MB.
+   * </p>
+   * 
+   * @param size the maximum buffer size in bytes
+   * @return this builder
+   */
+  public ConnectionFactoryBuilder setTLSMaxBufferSize(int size) {
+    this.tlsMaxBufferSize = size;
+    return this;
+  }
+  
+  /**
+   * Set the maximum number of buffers per size that can be stored in the TLS buffer pool.
+   * 
+   * <p>
+   * This setting controls how many buffers of each capacity size can be cached for reuse.
+   * Higher values reduce allocation overhead for many concurrent connections,
+   * but consume more memory. The default is 64 for large clusters.
+   * </p>
+   * 
+   * @param size the maximum number of buffers per capacity size
+   * @return this builder
+   */
+  public ConnectionFactoryBuilder setTLSMaxPoolSizePerCapacity(int size) {
+    this.tlsMaxPoolSizePerCapacity = size;
+    return this;
+  }
+
+  /**
    * Get the ConnectionFactory set up with the provided parameters.
    */
   public ConnectionFactory build() {
@@ -530,6 +566,16 @@ public class ConnectionFactoryBuilder {
       @Override
       public Optional<SSLContext> getSslContext() {
         return sslContext;
+      }
+
+      @Override
+      public int getTLSMaxBufferSize() {
+        return tlsMaxBufferSize;
+      }
+      
+      @Override
+      public int getTLSMaxPoolSizePerCapacity() {
+        return tlsMaxPoolSizePerCapacity;
       }
     };
 
