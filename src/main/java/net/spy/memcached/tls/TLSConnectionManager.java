@@ -452,7 +452,6 @@ public class TLSConnectionManager implements Closeable {
     // Static cleanup method to release all pooled buffers 
     public static void releaseAllPooledBuffers() {
         BUFFER_POOL.clear();
-        System.gc(); // Encourage GC to clean up the released buffers
         if (LOG.isDebugEnabled()) {
             LOG.debug("Released all pooled buffers");
         }
