@@ -6,10 +6,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.Map;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -25,7 +25,7 @@ public class TLSConnectionManager implements Closeable {
 
     // Buffer pool for reusing direct buffers
     private static final Map<Integer, List<ByteBuffer>> BUFFER_POOL = new ConcurrentHashMap<>();
-    private static final int MAX_POOL_SIZE_PER_SIZE = 8;
+    private static final int MAX_POOL_SIZE_PER_CAPACITY = 8;
     private static final int MAX_BUFFER_SIZE = 1024 * 1024; // 1MB max buffer size
 
     private final SSLContext sslContext;
@@ -86,7 +86,7 @@ public class TLSConnectionManager implements Closeable {
         // Add to pool if there's space
         List<ByteBuffer> bufferList = BUFFER_POOL.computeIfAbsent(capacity, k -> new ArrayList<>());
         synchronized (bufferList) {
-            if (bufferList.size() < MAX_POOL_SIZE_PER_SIZE) {
+            if (bufferList.size() < MAX_POOL_SIZE_PER_CAPACITY) {
                 bufferList.add(buffer);
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("Added buffer of size %d to pool, pool size: %d", capacity, bufferList.size());
