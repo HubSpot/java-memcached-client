@@ -30,6 +30,8 @@ import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 
+import javax.net.ssl.SSLContext;
+
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
@@ -40,8 +42,6 @@ import net.spy.memcached.ops.OperationQueueFactory;
 import net.spy.memcached.protocol.ascii.AsciiOperationFactory;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
 import net.spy.memcached.transcoders.Transcoder;
-
-import javax.net.ssl.SSLContext;
 
 /**
  * Builder for more easily configuring a ConnectionFactory.
@@ -621,7 +621,6 @@ public class ConnectionFactoryBuilder {
    */
   private void checkPreconditions() {
     if (sslEnabled) {
-      LOG.error("Memcached ConnectionFactory configured with SSL Enabled, but SSL support is not ready.");
       if (sslContext.isEmpty()) {
         throw new IllegalArgumentException(
                 "SSL is enabled but SSLContext is empty. Please call .setSslContext() before building."
