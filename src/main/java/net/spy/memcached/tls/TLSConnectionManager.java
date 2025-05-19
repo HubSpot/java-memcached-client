@@ -15,11 +15,11 @@ import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 import net.spy.memcached.ConnectionFactory;
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
-import net.spy.memcached.DefaultConnectionFactory;
 
 public class TLSConnectionManager implements Closeable {
 
@@ -27,6 +27,9 @@ public class TLSConnectionManager implements Closeable {
 
     // Buffer pool for reusing direct buffers
     private static final Map<Integer, List<ByteBuffer>> BUFFER_POOL = new ConcurrentHashMap<>();
+
+    // Cipher suite that does not encrypt data
+    private static final String[] NULL_CIPHER_SUITE = {"eNULL"};
     
     // Per-instance configuration values
     private final int maxPoolSizePerCapacity;
@@ -79,6 +82,8 @@ public class TLSConnectionManager implements Closeable {
             }
         }
         sslEngine = sslContext.createSSLEngine();
+        SSLParameters sslParameters = sslEngine.getSSLParameters();
+        sslParameters.setCipherSuites(NULL_CIPHER_SUITE);
         sslEngine.setUseClientMode(true);
     }
 
