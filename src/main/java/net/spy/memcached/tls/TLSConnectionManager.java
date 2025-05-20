@@ -29,7 +29,7 @@ public class TLSConnectionManager implements Closeable {
     private static final Map<Integer, List<ByteBuffer>> BUFFER_POOL = new ConcurrentHashMap<>();
 
     // Cipher suite that does not encrypt data
-    private static final String[] NULL_CIPHER_SUITE = {"eNULL"};
+    private static final String[] NULL_CIPHER_SUITE = {"eNULL", "NULL"};
     
     // Per-instance configuration values
     private final int maxPoolSizePerCapacity;
@@ -85,6 +85,7 @@ public class TLSConnectionManager implements Closeable {
         SSLParameters sslParameters = sslEngine.getSSLParameters();
         sslParameters.setCipherSuites(NULL_CIPHER_SUITE);
         sslEngine.setUseClientMode(true);
+        sslEngine.setSSLParameters(sslParameters);
     }
 
     private void releaseBufferToPool(ByteBuffer buffer) {
