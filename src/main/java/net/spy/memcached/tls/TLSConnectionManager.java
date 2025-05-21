@@ -4,12 +4,18 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.security.AlgorithmConstraints;
+import java.security.AlgorithmParameters;
+import java.security.CryptoPrimitive;
+import java.security.Key;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -17,6 +23,7 @@ import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
+
 import net.spy.memcached.ConnectionFactory;
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
@@ -29,7 +36,30 @@ public class TLSConnectionManager implements Closeable {
     private static final Map<Integer, List<ByteBuffer>> BUFFER_POOL = new ConcurrentHashMap<>();
 
     // Cipher suite that does not encrypt data
-    private static final String[] NULL_CIPHER_SUITE = {"eNULL", "NULL"};
+    private static final String[] NULL_CIPHER_SUITES = {"TLS_DHE_PSK_WITH_NULL_SHA",
+      "TLS_DHE_PSK_WITH_NULL_SHA256",
+      "TLS_DHE_PSK_WITH_NULL_SHA384",
+      "TLS_PSK_WITH_NULL_SHA",
+      "TLS_PSK_WITH_NULL_SHA256",
+      "TLS_PSK_WITH_NULL_SHA384",
+      "TLS_RSA_PSK_WITH_NULL_SHA",
+      "TLS_RSA_PSK_WITH_NULL_SHA256",
+      "TLS_RSA_PSK_WITH_NULL_SHA384",
+      "SSL_RSA_WITH_NULL_MD5",
+      "SSL_RSA_WITH_NULL_SHA",
+      "TLS_RSA_WITH_NULL_MD5",
+      "TLS_RSA_WITH_NULL_SHA",
+      "TLS_ECDHE_ECDSA_WITH_NULL_SHA",
+      "TLS_ECDHE_PSK_WITH_NULL_SHA",
+      "TLS_ECDHE_PSK_WITH_NULL_SHA256",
+      "TLS_ECDHE_PSK_WITH_NULL_SHA384",
+      "TLS_ECDHE_RSA_WITH_NULL_SHA",
+      "TLS_ECDH_ECDSA_WITH_NULL_SHA",
+      "TLS_ECDH_RSA_WITH_NULL_SHA",
+      "TLS_ECDH_anon_WITH_NULL_SHA",
+      "TLS_RSA_WITH_NULL_SHA256",
+      "SSL_FORTEZZA_DMS_WITH_NULL_SHA",
+      "SSL_NULL_WITH_NULL_NULL"};
     
     // Per-instance configuration values
     private final int maxPoolSizePerCapacity;
@@ -83,9 +113,25 @@ public class TLSConnectionManager implements Closeable {
         }
         sslEngine = sslContext.createSSLEngine();
         SSLParameters sslParameters = sslEngine.getSSLParameters();
-        sslParameters.setCipherSuites(NULL_CIPHER_SUITE);
-        sslEngine.setUseClientMode(true);
+        sslParameters.setCipherSuites(NULL_CIPHER_SUITES);
+        sslParameters.setAlgorithmConstraints(new AlgorithmConstraints() {
+            @Override
+            public boolean permits(Set<CryptoPrimitive> primitives, String algorithm, AlgorithmParameters parameters) {
+                return algorithm.contains("NULL") && !algorithm.contains("aNULL");
+            }
+
+            @Override
+            public boolean permits(Set<CryptoPrimitive> primitives, Key key) {
+                return false;
+            }
+
+            @Override
+            public boolean permits(Set<CryptoPrimitive> primitives, String algorithm, Key key, AlgorithmParameters parameters) {
+                return algorithm.contains("NULL") && !algorithm.contains("aNULL");
+            }
+        });
         sslEngine.setSSLParameters(sslParameters);
+        sslEngine.setUseClientMode(true);
     }
 
     private void releaseBufferToPool(ByteBuffer buffer) {
