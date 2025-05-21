@@ -36,30 +36,18 @@ public class TLSConnectionManager implements Closeable {
     private static final Map<Integer, List<ByteBuffer>> BUFFER_POOL = new ConcurrentHashMap<>();
 
     // Cipher suite that does not encrypt data
-    private static final String[] NULL_CIPHER_SUITES = {"TLS_DHE_PSK_WITH_NULL_SHA",
-      "TLS_DHE_PSK_WITH_NULL_SHA256",
-      "TLS_DHE_PSK_WITH_NULL_SHA384",
-      "TLS_PSK_WITH_NULL_SHA",
-      "TLS_PSK_WITH_NULL_SHA256",
-      "TLS_PSK_WITH_NULL_SHA384",
-      "TLS_RSA_PSK_WITH_NULL_SHA",
-      "TLS_RSA_PSK_WITH_NULL_SHA256",
-      "TLS_RSA_PSK_WITH_NULL_SHA384",
-      "SSL_RSA_WITH_NULL_MD5",
-      "SSL_RSA_WITH_NULL_SHA",
-      "TLS_RSA_WITH_NULL_MD5",
+    private static final String[] NULL_CIPHER_SUITES = {
       "TLS_RSA_WITH_NULL_SHA",
-      "TLS_ECDHE_ECDSA_WITH_NULL_SHA",
-      "TLS_ECDHE_PSK_WITH_NULL_SHA",
-      "TLS_ECDHE_PSK_WITH_NULL_SHA256",
-      "TLS_ECDHE_PSK_WITH_NULL_SHA384",
-      "TLS_ECDHE_RSA_WITH_NULL_SHA",
-      "TLS_ECDH_ECDSA_WITH_NULL_SHA",
       "TLS_ECDH_RSA_WITH_NULL_SHA",
-      "TLS_ECDH_anon_WITH_NULL_SHA",
       "TLS_RSA_WITH_NULL_SHA256",
-      "SSL_FORTEZZA_DMS_WITH_NULL_SHA",
-      "SSL_NULL_WITH_NULL_NULL"};
+      "TLS_ECDH_anon_WITH_NULL_SHA",
+      "SSL_RSA_WITH_NULL_MD5",
+      "TLS_ECDHE_RSA_WITH_NULL_SHA",
+      "SSL_RSA_WITH_NULL_SHA",
+      "TLS_ECDH_ECDSA_WITH_NULL_SHA",
+      "TLS_RSA_WITH_NULL_MD5",
+      "TLS_ECDHE_ECDSA_WITH_NULL_SHA",
+    };
     
     // Per-instance configuration values
     private final int maxPoolSizePerCapacity;
