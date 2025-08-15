@@ -31,7 +31,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import net.spy.memcached.CachedData;
 import net.spy.memcached.compat.SpyObject;
 import net.spy.memcached.internal.BasicThreadFactory;
@@ -44,7 +43,7 @@ public class TranscodeService extends SpyObject {
   private final ThreadPoolExecutor pool;
 
   public TranscodeService(boolean daemon) {
-    pool = new ThreadPoolExecutor(1, 10, 60L, TimeUnit.MILLISECONDS,
+    pool = new ThreadPoolExecutor(1, 50, 60L, TimeUnit.MILLISECONDS,
         new ArrayBlockingQueue<Runnable>(100), new BasicThreadFactory(
           "transcoder", daemon), new ThreadPoolExecutor.DiscardPolicy());
   }
