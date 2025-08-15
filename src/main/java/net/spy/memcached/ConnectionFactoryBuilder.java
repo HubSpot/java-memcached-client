@@ -29,9 +29,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
-
 import javax.net.ssl.SSLContext;
-
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.compat.log.Logger;
 import net.spy.memcached.compat.log.LoggerFactory;
@@ -92,6 +90,7 @@ public class ConnectionFactoryBuilder {
   protected Optional<SSLContext> sslContext = Optional.empty();
   protected int tlsMaxBufferSize = DefaultConnectionFactory.DEFAULT_TLS_MAX_BUFFER_SIZE;
   protected int tlsMaxPoolSizePerCapacity = DefaultConnectionFactory.DEFAULT_TLS_MAX_POOL_SIZE_PER_CAPACITY;
+  protected int transcodeServiceThreadPoolSize = DefaultConnectionFactory.DEFAULT_TRANSCODE_SERVICE_THREAD_POOL_SIZE;
 
   /**
    * Set the operation queue factory.
@@ -121,6 +120,7 @@ public class ConnectionFactoryBuilder {
     setAuthWaitTime(cf.getAuthWaitTime());
     setSslEnabled(cf.getSslEnabled());
     setSslContext(cf.getSslContext());
+    setTranscodeServiceThreadPoolSize(cf.getTranscodeServiceThreadPoolSize());
   }
 
   public ConnectionFactoryBuilder setOpQueueFactory(OperationQueueFactory q) {
@@ -416,6 +416,23 @@ public class ConnectionFactoryBuilder {
   }
 
   /**
+   * Set the size of the thread pool for the TranscodeService.
+   *
+   * <p>
+   * This setting determines how many threads are available for transcoding operations.
+   * A larger pool can improve performance for high-throughput applications, but consumes more resources.
+   * The default is 10 threads.
+   * </p>
+   *
+   * @param size the number of threads in the pool
+   * @return this builder
+   */
+  public ConnectionFactoryBuilder setTranscodeServiceThreadPoolSize(int size) {
+    this.transcodeServiceThreadPoolSize = size;
+    return this;
+  }
+
+  /**
    * Get the ConnectionFactory set up with the provided parameters.
    */
   public ConnectionFactory build() {
@@ -576,6 +593,11 @@ public class ConnectionFactoryBuilder {
       @Override
       public int getTLSMaxPoolSizePerCapacity() {
         return tlsMaxPoolSizePerCapacity;
+      }
+
+      @Override
+      public int getTranscodeServiceThreadPoolSize() {
+        return transcodeServiceThreadPoolSize;
       }
     };
 

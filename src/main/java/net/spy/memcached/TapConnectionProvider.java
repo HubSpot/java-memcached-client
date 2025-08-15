@@ -30,7 +30,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.auth.AuthThreadMonitor;
 import net.spy.memcached.compat.SpyObject;
