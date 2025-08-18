@@ -33,7 +33,6 @@ import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import javax.net.ssl.SSLContext;
-
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.metrics.MetricCollector;
 import net.spy.memcached.metrics.MetricType;
@@ -242,4 +241,20 @@ public interface ConnectionFactory {
    * @return the maximum number of buffers per capacity size
    */
   int getTLSMaxPoolSizePerCapacity();
+
+  /**
+   * Get the size of the thread pool used for asynchronous transcoding operations.
+   *
+   * <p>
+   * This setting determines how many threads are available to handle
+   * transcoding tasks concurrently. A larger pool can improve performance
+   * for high-throughput applications, but consumes more system resources.
+   * The default is 10 threads.
+   * </p>
+   *
+   * @return the size of the transcoder thread pool
+   */
+  default int getTranscodeServiceThreadPoolSize() {
+    return 10;
+  }
 }

@@ -38,7 +38,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
+import javax.net.ssl.SSLContext;
 import net.spy.memcached.auth.AuthDescriptor;
 import net.spy.memcached.compat.SpyObject;
 import net.spy.memcached.metrics.DefaultMetricCollector;
@@ -52,8 +52,6 @@ import net.spy.memcached.protocol.binary.BinaryMemcachedNodeImpl;
 import net.spy.memcached.protocol.binary.BinaryOperationFactory;
 import net.spy.memcached.transcoders.SerializingTranscoder;
 import net.spy.memcached.transcoders.Transcoder;
-
-import javax.net.ssl.SSLContext;
 
 /**
  * Default implementation of ConnectionFactory.
@@ -145,6 +143,11 @@ public class DefaultConnectionFactory extends SpyObject implements
    * The default maximum number of buffers per capacity in the TLS buffer pool.
    */
   public static final int DEFAULT_TLS_MAX_POOL_SIZE_PER_CAPACITY = 64;
+
+  /**
+   * The default size of the thread pool used for asynchronous transcoding operations.
+   */
+  public static final int DEFAULT_TRANSCODE_SERVICE_THREAD_POOL_SIZE = 10;
 
   protected final int opQueueLen;
   private final int readBufSize;
@@ -488,6 +491,11 @@ public class DefaultConnectionFactory extends SpyObject implements
   }
 
   @Override
+  public int getTranscodeServiceThreadPoolSize() {
+    return DEFAULT_TRANSCODE_SERVICE_THREAD_POOL_SIZE;
+  }
+
+  @Override
   public MetricType enableMetrics() {
     String metricType = System.getProperty("net.spy.metrics.type");
     return metricType == null
@@ -527,6 +535,7 @@ public class DefaultConnectionFactory extends SpyObject implements
       + getReadBufSize() + ", Transcoder: " + getDefaultTranscoder()
       + ", Operation Factory: " + getOperationFactory() + " isDaemon: "
       + isDaemon() + ", Optimized: " + shouldOptimize() + ", Using Nagle: "
-      + useNagleAlgorithm() + ", ConnectionFactory: " + getName();
+      + useNagleAlgorithm() + ", ConnectionFactory: " + getName()
+      + ", Transcode Service Thread Pool Size: " + getTranscodeServiceThreadPoolSize();
   }
 }
