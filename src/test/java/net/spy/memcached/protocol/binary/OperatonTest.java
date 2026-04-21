@@ -22,7 +22,17 @@
 
 package net.spy.memcached.protocol.binary;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicReference;
+
 import junit.framework.TestCase;
+
+import net.spy.memcached.OperationFactory;
+import net.spy.memcached.ops.GetOperation;
+import net.spy.memcached.ops.OperationException;
+import net.spy.memcached.ops.OperationStatus;
+import net.spy.memcached.ops.StatusCode;
 
 import static net.spy.memcached.protocol.binary.OperationImpl.decodeInt;
 import static net.spy.memcached.protocol.binary.OperationImpl.decodeLong;
@@ -63,5 +73,93 @@ public class OperatonTest extends TestCase {
   public void testOperationStatusString() {
     String s = String.valueOf(OperationImpl.STATUS_OK);
     assertEquals("{OperationStatus success=true:  OK}", s);
+  }
+
+  public void testInvalidMagicRaisesException() {
+    byte[] header = new byte[24];
+    header[0] = (byte) 0x45;
+    header[8] = (byte) 0x6F;
+    header[9] = (byte) 0x20;
+    header[10] = (byte) 0x6D;
+    header[11] = (byte) 0x61;
+
+    AtomicReference<OperationStatus> received = new AtomicReference<>();
+    GetOperation op = newGetOperation(received);
+
+    IOException thrown = null;
+    try {
+      op.readFromBuffer(ByteBuffer.wrap(header));
+    } catch (IOException e) {
+      thrown = e;
+    }
+
+    assertNotNull("Expected IOException for invalid magic byte", thrown);
+    assertTrue(thrown instanceof OperationException);
+    assertTrue(thrown.getMessage().contains("Invalid magic byte"));
+    assertNotNull(received.get());
+    assertFalse(received.get().isSuccess());
+    assertEquals(StatusCode.ERR_INTERNAL, received.get().getStatusCode());
+  }
+
+  public void testMismatchedResponseCmdRaisesException() {
+    byte[] header = new byte[24];
+    header[0] = (byte) 0x81;
+    header[1] = (byte) 0x7A;
+
+    AtomicReference<OperationStatus> received = new AtomicReference<>();
+    GetOperation op = newGetOperation(received);
+
+    IOException thrown = null;
+    try {
+      op.readFromBuffer(ByteBuffer.wrap(header));
+    } catch (IOException e) {
+      thrown = e;
+    }
+
+    assertNotNull("Expected IOException for mismatched response command", thrown);
+    assertTrue(thrown instanceof OperationException);
+    assertTrue(thrown.getMessage().contains("Unexpected response command"));
+    assertEquals(StatusCode.ERR_INTERNAL, received.get().getStatusCode());
+  }
+
+  public void testInvalidOpaqueRaisesException() {
+    byte[] header = new byte[24];
+    header[0] = (byte) 0x81;
+    header[1] = (byte) 0x00;
+    header[12] = (byte) 0x7F;
+    header[13] = (byte) 0xFF;
+    header[14] = (byte) 0xFF;
+    header[15] = (byte) 0xFE;
+
+    AtomicReference<OperationStatus> received = new AtomicReference<>();
+    GetOperation op = newGetOperation(received);
+
+    IOException thrown = null;
+    try {
+      op.readFromBuffer(ByteBuffer.wrap(header));
+    } catch (IOException e) {
+      thrown = e;
+    }
+
+    assertNotNull("Expected IOException for invalid opaque", thrown);
+    assertTrue(thrown instanceof OperationException);
+    assertTrue(thrown.getMessage().contains("Opaque is not valid"));
+    assertEquals(StatusCode.ERR_INTERNAL, received.get().getStatusCode());
+  }
+
+  private static GetOperation newGetOperation(
+      final AtomicReference<OperationStatus> received) {
+    OperationFactory opFact = new BinaryOperationFactory();
+    return opFact.get("key", new GetOperation.Callback() {
+      public void receivedStatus(OperationStatus s) {
+        received.set(s);
+      }
+
+      public void gotData(String k, int flags, byte[] data) {
+      }
+
+      public void complete() {
+      }
+    });
   }
 }

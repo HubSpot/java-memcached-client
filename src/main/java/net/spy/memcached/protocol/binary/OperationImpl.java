@@ -161,19 +161,30 @@ public  abstract class OperationImpl extends BaseOperationImpl
   /**
    * Parse the header info out of the buffer.
    */
-  private void parseHeaderFromBuffer() {
+  private void parseHeaderFromBuffer() throws IOException {
     int magic = header[0];
-    assert magic == RES_MAGIC : "Invalid magic:  " + magic;
+    if (magic != RES_MAGIC) {
+      handleError(OperationErrorType.SERVER, "Invalid magic byte: " + magic);
+    }
     responseCmd = header[1];
-    assert cmd == DUMMY_OPCODE || responseCmd == cmd
-      : "Unexpected response command value";
+    if (cmd != DUMMY_OPCODE && responseCmd != cmd) {
+      handleError(
+        OperationErrorType.SERVER,
+        "Unexpected response command value: " + responseCmd
+      );
+    }
     keyLen = decodeShort(header, 2);
     errorCode = decodeShort(header, 6);
     int bytesToRead = decodeInt(header, 8);
     payload = new byte[bytesToRead];
     responseOpaque = decodeInt(header, 12);
     responseCas = decodeLong(header, 16);
-    assert opaqueIsValid() : "Opaque is not valid";
+    if (!opaqueIsValid()) {
+      handleError(
+        OperationErrorType.SERVER,
+        "Opaque is not valid: expected " + opaque + ", got " + responseOpaque
+      );
+    }
   }
 
   /**
