@@ -343,36 +343,65 @@ public class MemcachedConnection extends SpyThread {
       final Collection<InetSocketAddress> addrs) throws IOException {
     List<MemcachedNode> connections = new ArrayList<MemcachedNode>(addrs.size());
 
-    for (SocketAddress sa : addrs) {
-      SocketChannel ch = SocketChannel.open();
-      ch.configureBlocking(false);
-      MemcachedNode qa = connectionFactory.createMemcachedNode(sa, ch, bufSize);
-      qa.setConnection(this);
-      int ops = 0;
-      ch.socket().setTcpNoDelay(!connectionFactory.useNagleAlgorithm());
+    try {
+      for (SocketAddress sa : addrs) {
+        SocketChannel ch = SocketChannel.open();
+        ch.configureBlocking(false);
+        MemcachedNode qa = connectionFactory.createMemcachedNode(sa, ch, bufSize);
+        qa.setConnection(this);
+        connections.add(qa);
+        int ops = 0;
+        ch.socket().setTcpNoDelay(!connectionFactory.useNagleAlgorithm());
 
-      try {
-        if (ch.connect(sa)) {
-          getLogger().info("Connected to %s immediately", qa);
-          connected(qa);
-        } else {
-          getLogger().info("Added %s to connect queue", qa);
-          ops = SelectionKey.OP_CONNECT;
+        try {
+          if (ch.connect(sa)) {
+            getLogger().info("Connected to %s immediately", qa);
+            connected(qa);
+          } else {
+            getLogger().info("Added %s to connect queue", qa);
+            ops = SelectionKey.OP_CONNECT;
+          }
+
+          selector.wakeup();
+          qa.setSk(ch.register(selector, ops, qa));
+          assert ch.isConnected()
+              || qa.getSk().interestOps() == SelectionKey.OP_CONNECT
+              : "Not connected, and not wanting to connect";
+        } catch (SocketException e) {
+          getLogger().warn("Socket error on initial connect", e);
+          queueReconnect(qa);
         }
-
-        selector.wakeup();
-        qa.setSk(ch.register(selector, ops, qa));
-        assert ch.isConnected()
-            || qa.getSk().interestOps() == SelectionKey.OP_CONNECT
-            : "Not connected, and not wanting to connect";
-      } catch (SocketException e) {
-        getLogger().warn("Socket error on initial connect", e);
-        queueReconnect(qa);
       }
-      connections.add(qa);
+    } catch (IOException e) {
+      closeQuietly(connections);
+      throw e;
+    } catch (RuntimeException e) {
+      closeQuietly(connections);
+      throw e;
     }
 
     return connections;
+  }
+
+  /**
+   * Close the channels and cancel the selection keys of nodes created during
+   * connect. Used when construction fails part-way through the address list,
+   * so a failed client build does not leave the sockets opened to the earlier
+   * addresses connected while unreachable from any code path.
+   */
+  private void closeQuietly(List<MemcachedNode> connections) {
+    for (MemcachedNode node : connections) {
+      try {
+        if (node.getSk() != null) {
+          node.getSk().cancel();
+        }
+        if (node.getChannel() != null && node.getChannel().isOpen()) {
+          node.getChannel().close();
+        }
+      } catch (IOException e) {
+        getLogger().warn("Could not close channel for %s", node, e);
+      }
+    }
   }
 
   /**
