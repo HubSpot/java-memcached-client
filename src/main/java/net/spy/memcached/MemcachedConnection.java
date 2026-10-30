@@ -292,11 +292,11 @@ public class MemcachedConnection extends SpyThread {
     wakeupDelay = Integer.parseInt( System.getProperty("net.spy.wakeupDelay",
         Integer.toString(DEFAULT_WAKEUP_DELAY)));
 
-    List<MemcachedNode> connections = createConnections(a);
-    locator = f.createLocator(connections);
-
     metrics = f.getMetricCollector();
     metricType = f.enableMetrics();
+
+    List<MemcachedNode> connections = createConnections(a);
+    locator = f.createLocator(connections);
 
     registerMetrics();
 
